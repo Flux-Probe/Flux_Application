@@ -1,0 +1,54 @@
+#ifndef _AS5600_DRIVER
+#define _AS5600_DRIVER
+
+#include <stdbool.h>
+#include <stdint.h>
+#include "driver/i2c_master.h"
+#include "mainDefs.h"
+
+#define MAX_READ_SIZE 2 //Only 2 bytes reading at a time
+#define MAX_WRITE_SIZE 2 //Only 2 bytes reading at a time
+
+// ───────── DEFINES ─────────
+#define AS5600_ADDR 0x36
+#define ANGLE_MSB   0x0E
+
+// TODO: Replace this #if with different configuration names.
+// #if 1
+#define I2C_PORT    I2C_NUM_0   // TODO: Confirm what is the i2c Port
+#define SDA_PIN     18
+#define SCL_PIN     19
+#define SDA_PULLUP_EN GPIO_PULLUP_ENABLE
+#define SCL_PULLUP_EN GPIO_PULLUP_ENABLE
+#define I2C_CLK_SPD 400000
+#define I2C_READ_TIMEOUT 1000
+// #endif //if 1
+
+typedef struct {
+    i2c_master_bus_config_t masterCfg;
+    i2c_device_config_t devCfg;
+} i2cCfg_t;
+
+typedef struct {
+    uint16_t     dbgFlag;
+
+    i2cCfg_t i2cCfg;
+    i2c_master_bus_handle_t i2cBus;
+    i2c_master_dev_handle_t i2cDev;
+
+    uint8_t  dataBuf[MAX_READ_SIZE];
+    int32_t  rawData;
+    float    angle;
+    uint8_t  readCount;
+    uint8_t  writeData[MAX_WRITE_SIZE];
+    uint8_t  addr;
+    uint32_t i2cPort;
+    uint32_t readTimeout;
+} as5600_cfg_t;
+
+resp_t readAS5600Raw(as5600_cfg_t *cfg);
+float readAS5600Deg(as5600_cfg_t *cfg);
+
+resp_t as5600Init(as5600_cfg_t *cfg);
+
+#endif
