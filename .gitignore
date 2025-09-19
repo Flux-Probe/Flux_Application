@@ -1,0 +1,36 @@
+.vscode/
+
+# ESP-IDF build output
+*/build/
+*/*.bin
+*/*.elf
+*/*.map
+
+
+# IDF-related configuration files (local to developer)
+sdkconfig.old
+sdkconfig
+
+
+# Older Files I'm using to build out the new C version
+OldTempFiles/
+
+
+# ===== MOBILE APPLICATION IGNORES =====
+# Node modules
+*/node_modules/
+
+# Metro / cache / logs
+*/.expo/
+*/.expo-shared/
+*/.parcel-cache/
+*/.turbo/
+*/.cache/
+*/yarn.lock
+*/npm-debug.log*
+*/package-lock.json
+
+# Android build output
+*/android/.gradle/
+*/android/app/build/
+*/android/build/
