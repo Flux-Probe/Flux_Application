@@ -14,6 +14,7 @@
 
 #define FREQ_25HZ 40 // 25Hz
 #define FREQ_1HZ 1000
+#define FREQ_2HZ 500
 
 static gpio_config_t mtr_gpio_cfg = {
     .mode = GPIO_MODE_OUTPUT,
@@ -26,45 +27,67 @@ mtrCfg_t valveMtrCfg = {
     .pinLow  = IN2_PIN,
 };
 
-mtrState_t valveMtrState = {
+// TODO: Likely move to a custom cfg file if we want like "Profiles"
+mtrState_t valveMtrStateDflt = {
     .debugFlag   = ESP_LOG_ERROR | ESP_LOG_DEBUG,
     .driverState = STATE_STARTUP,
     .driveDir    = MTR_STOP,
     .cfg         = &valveMtrCfg,
-    .currAngle = 0,
-    .targetAngle = 0,
-    .prevAngle = 0,
-    .openPct = 0,
-    .angleVel = 0,
-    .loopFreq = FREQ_1HZ, // TODO: Revert back to 25Hz
-    .error = 0,
+    .currAngle   = A_START,
+    .targetAngle = A_START,
+    .prevAngle   = 0,
+    .openPct     = 0,
+    .angleVel    = 0,
+    .loopFreq    = FREQ_2HZ, // TODO: Revert back to 25Hz
+    .error       = 0,
     .rawCurrent  = 0,
 
     .coast = {
-        .active = false,
-        .t_coast = 0,
-        .alpha = 0.5,
-        .min = 0.2,
-        .max = 25,
-        .fwdCoast = 4,
-        .revCoast = 4,
-        .kvSec = 0.03,
-        .angleAtStop = 0,
-        .dirAtStop = MTR_STOP,
+        .active       = false,
+        .t_coast      = 0,
+        .alpha        = 0.5,
+        .min          = 0.2,
+        .max          = 25,
+        .fwdCoast     = 4,
+        .revCoast     = 4,
+        .kvSec        = 0.03,
+        .angleAtStop  = 0,
+        .dirAtStop    = MTR_STOP,
         .minCoastTime = 120.0,
         .maxCoastTime = 400.0,
     },
 };
 
+void loadDefaults(mtrState_t *mtrState)
+{
+    memcpy(mtrState, &valveMtrStateDflt, sizeof(mtrState_t));
+}
+
 // ───── Motor ─────
+void setMotorEnable(mtrState_t *mtrState, bool enable)
+{
+    if (enable != mtrState->enabled) {
+        // Setting either on or off, set mode and drive to OFF
+        setMotorDrive(mtrState, MTR_STOP);
+        mtrState->driveMode = MODE_OFF;
+        LOG_I("Setting Motor to :%d", enable);
+    }
+    mtrState->enabled = enable;
+}
+void setDriveMode(mtrState_t *mtrState, mtrDriveMode_e setMode)
+{
+
+    mtrState->driveMode = setMode;
+}
+
 void setMotorDrive(mtrState_t *mtrState, mtrDriveDir_e setDrive)
 {
     int highPin = LOW;
     int lowPin = LOW;
     char driveDir[6] = "";
-    if (mtrState->driveDir == setDrive) {
-        return;
-    }
+    // if (mtrState->driveDir == setDrive) {
+    //     return;
+    // }
     switch (setDrive)
     {
     case MTR_STOP:
@@ -91,7 +114,7 @@ void setMotorDrive(mtrState_t *mtrState, mtrDriveDir_e setDrive)
     gpio_set_level(mtrState->cfg->pinLow, lowPin);
 
     LOG_V("Setting to mode '%s'(Pin %d to %d| and Pin %d to %d)",
-          mtrState->cfg->pinHigh, highPin,
+          driveDir, mtrState->cfg->pinHigh, highPin,
           mtrState->cfg->pinLow, lowPin);
     mtrState->driveDir = setDrive;
 }
@@ -103,6 +126,8 @@ bool inRegion(float a, float s, float e)
     return rslt;
 }
 
+
+// Based on given angle, and limits, return percent the valve is open
 float pctWithin(float a, float s, float e){
   float span = (e >= s) ? (e - s):(360.0f - s + e);
   float ctr = fmodf(s + span * 0.5f + 360.0f, 360.0f);
@@ -119,6 +144,18 @@ float percentOpen(float a){
     if(inRegion(a, B_START, B_END))
         return pctWithin(a, B_START, B_END);
     return 0.0f;
+}
+
+
+void setTargetPercent(mtrState_t *mtrState, float target) {
+    LOG_W("set pct: %.2f", target);
+    if (target < 0.0 || target > 1.0) {
+        mtrState->targetAngle = NAN;
+    }
+    else {
+        float tempAngle = A_START + ((A_END - A_START) * target);
+        mtrState->targetAngle = tempAngle;
+    }
 }
 
 // ----------- Coasting Logic -----------
@@ -165,107 +202,138 @@ void updateCoastLearn(mtrState_t *mtrState){
     }
 }
 
+void readEncoder(mtrState_t *mtr)
+{
+    mtr->currAngle = readAS5600Deg(&mtr->encoderCfg);
+    // if (mtr->driveDir == MTR_FORWARD) {
+    //     mtr->currAngle = mtr->currAngle + 0.05;
+    // }
+    // else if (mtr->driveDir == MTR_REVERSE) {
+    //     mtr->currAngle = mtr->currAngle - 0.05;
+    // }
+
+}
+
+void targetPositionControl(mtrState_t *mtrState)
+{
+    // Angle is invalid. Cut the motor Add a delay so cpu can be released
+    if(mtrState->currAngle < 0) {
+        setMotorDrive(mtrState, MTR_STOP);
+        return;
+    }
+
+    // velocity estimation
+    if(isnan(mtrState->prevAngle)) {
+        mtrState->angleVel = 0;
+    }
+    else {
+        float dt_s = (mtrState->t_loop.t_start - mtrState->t_loop.t_prev)/1000.0f;
+        if (dt_s > 0) {
+            float angDiff = mtrState->currAngle - mtrState->prevAngle;
+            mtrState->angleVel = angDiff / dt_s;
+        }
+    }
+    mtrState->t_loop.t_prev = mtrState->t_loop.t_start;
+    mtrState->prevAngle = mtrState->currAngle;
+
+    updateCoastLearn(mtrState);
+
+    if(isnan(mtrState->targetAngle)) {
+        return;
+    }
+
+    mtrState->error = mtrState->targetAngle - mtrState->currAngle;
+    float absError = fabsf(mtrState->error);
+
+    // Low Band
+    if (absError <= BAND_STOP && mtrState->driveDir != MTR_STOP) {
+        startCoastMeasure(mtrState);
+        return;
+    }
+
+    mtrDriveDir_e targetDir = (mtrState->error > 0)? MTR_FORWARD:
+                                                        MTR_REVERSE;
+
+    if (absError <= NEAR_DEG) {
+        float stopDist = (targetDir == MTR_FORWARD)?
+                            mtrState->coast.fwdCoast: mtrState->coast.revCoast;
+        stopDist += BAND_STOP + mtrState->coast.kvSec * fabsf(mtrState->angleVel);
+        stopDist = fminf(NEAR_DEG, fmaxf(BAND_STOP + 0.2f, stopDist));
+
+        if (absError <= stopDist) {
+            if (mtrState->driveDir != MTR_STOP) {
+                startCoastMeasure(mtrState);
+            }
+            if (mtrState->coast.active) {
+                return;
+            }
+        }
+    }
+
+    if(absError > BAND_START){ // simple control band
+        if (targetDir != mtrState->driveDir) {
+            if (mtrState->t_loop.t_start - mtrState->t_loop.t_lastDirChanged >= REV_DEAD_MS) {
+                setMotorDrive(mtrState, targetDir);
+                mtrState->t_loop.t_lastDirChanged = mtrState->t_loop.t_start;
+            }
+            else {
+                setMotorDrive(mtrState, MTR_STOP);
+            }
+        }
+        else {
+            setMotorDrive(mtrState, mtrState->driveDir);
+        }
+    }
+}
+
 // ----------- Control Task -----------
-void motor_control_task(void *arg)
+void motorControlTask(void *arg)
 {
     mtrState_t *mtrState = (mtrState_t*) arg;
-    int64_t t_prev  = 0;
-    int64_t t_start = 0;
-    int64_t t_lastDirChanged = 0;
+
     while(1){
         // TODO: Add a semaphore here to have this loop go at a certain rate
 
         vTaskDelay(pdMS_TO_TICKS(mtrState->loopFreq));
-        LOG_D("Start of loop");
-        t_start = esp_timer_get_time() / 1000;
-
+        // LOG_D("Start of loop");
+        mtrState->t_loop.t_start = esp_timer_get_time() / 1000;
+        LOG_I("%d,%d,%d", mtrState->enabled, mtrState->driveMode, mtrState->driveDir);
         // TODO: Replace this with a separate call/task to get the current angle
         // of the valve
-        mtrState->currAngle = readAS5600Deg(&mtrState->encoderCfg);
+        readEncoder(mtrState);
 
-        // Angle is invalid. Cut the motor Add a delay so cpu can be released
-        if(mtrState->currAngle < 0) {
+        if (!mtrState->enabled) {
             setMotorDrive(mtrState, MTR_STOP);
             continue;
         }
 
-        // velocity estimation
-        if(isnan(mtrState->prevAngle)) {
-            mtrState->angleVel = 0;
-        }
-        else {
-            float dt_s = (t_start - t_prev)/1000.0f;
-            if (dt_s > 0) {
-                float angDiff = mtrState->currAngle - mtrState->prevAngle;
-                mtrState->angleVel = angDiff / dt_s;
-            }
-        }
-        t_prev = t_start;
-        mtrState->prevAngle = mtrState->currAngle;
-
-        updateCoastLearn(mtrState);
-
-        if(isnan(mtrState->targetAngle)) {
+        // Control Loop Logic
+        switch (mtrState->driveMode)
+        {
+        case MODE_OFF:
+        case MODE_OPEN:
+            setMotorDrive(mtrState, mtrState->driveDir);
+            break;
+        case MODE_POS:
+            targetPositionControl(mtrState);
+            break;
+        default:
+            LOG_W("INCORRECT DRIVE MODE");
             continue;
+            break;
         }
-
-        mtrState->error = mtrState->targetAngle - mtrState->currAngle;
-        float absError = fabsf(mtrState->error);
-
-        // Low Band
-        if (absError <= BAND_STOP && mtrState->driveDir != MTR_STOP) {
-            startCoastMeasure(mtrState);
-            continue;
-        }
-
-        mtrDriveDir_e targetDir = (mtrState->error > 0)? MTR_FORWARD:
-                                                           MTR_REVERSE;
-
-        if (absError <= NEAR_DEG) {
-            float stopDist = (targetDir == MTR_FORWARD)?
-                             mtrState->coast.fwdCoast: mtrState->coast.revCoast;
-            stopDist += BAND_STOP + mtrState->coast.kvSec * fabsf(mtrState->angleVel);
-            stopDist = fminf(NEAR_DEG, fmaxf(BAND_STOP + 0.2f, stopDist));
-
-            if (absError <= stopDist) {
-                if (mtrState->driveDir != MTR_STOP) {
-                    startCoastMeasure(mtrState);
-                }
-                if (mtrState->coast.active) {
-                    continue;
-                }
-            }
-        }
-
-        if(absError > BAND_START){ // simple control band
-            if (targetDir != mtrState->driveDir) {
-                if (t_start - t_lastDirChanged >= REV_DEAD_MS) {
-                    setMotorDrive(mtrState, targetDir);
-                    t_lastDirChanged = t_start;
-                }
-                else {
-                    setMotorDrive(mtrState, MTR_STOP);
-                }
-            }
-            else {
-                setMotorDrive(mtrState, mtrState->driveDir);
-            }
-        }
-
     }
 }
-
 
 void motorInit(mtrState_t * mtrState)
 {
     esp_err_t configResp = gpio_config(&mtr_gpio_cfg);
-
+    mtrState->enabled = false;
     if (configResp == ESP_ERR_INVALID_ARG) {
         LOG_E("Err when configuring GPIO");
         mtrState->driverState = STATE_FAILED;
         return;
     }
-
     setMotorDrive(mtrState, MTR_STOP);
 
     resp_t sts = as5600Init(&mtrState->encoderCfg);
@@ -286,14 +354,20 @@ void motorInit(mtrState_t * mtrState)
     all part of a larger type so that BLE module, temp sensor and other stuff
     plugs into
 */
-int motorCtrlMain(void) {
-    esp_log_level_set(TAG, valveMtrState.debugFlag); // Setting debug
+int motorCtrlMain(mtrState_t *mtrState) {
+    esp_log_level_set(TAG, mtrState->debugFlag); // Setting debug
+    loadDefaults(mtrState);
 
-    motorInit(&valveMtrState);
+    LOG_D("DEFAULTS:\nDEBUG_FLAG: %x\nDRIVE_STATE: %d\nDRIVE_DIR %d\nMAX_COAST_T %.2f\nMIN_COAST_T %.2f\n",
+           mtrState->debugFlag, mtrState->driverState, mtrState->driveDir,
+           mtrState->coast.maxCoastTime, mtrState->coast.minCoastTime);
+
+    LOG_D("Pins: %x", mtr_gpio_cfg.pin_bit_mask);
+    motorInit(mtrState);
 
     LOG_I("Creating motor ctrl task");
 
     // // Create task for control.
-    xTaskCreate(motor_control_task, "motor_ctrl", 4096, &valveMtrState, 10, NULL);
+    xTaskCreate(motorControlTask, "motor_ctrl", 4096, mtrState, 10, NULL);
     return 1;
 }
