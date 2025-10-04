@@ -76,7 +76,7 @@ resp_t as5600Init(as5600_cfg_t * cfg)
     esp_log_level_set(TAG, cfg->dbgFlag); // Setting debug
 
     resp_t resp = i2cConfigure(cfg);
-    RETURN_IF_ERR(resp);
+    RETURN_VAL_IF_ERR(resp, resp);
 
     LOG_I("Iniitialized I2C Successfully");
 

@@ -20,6 +20,12 @@ typedef enum {
     STATE_MAINTENANCE,
 } mtrDriveState_e;
 
+typedef enum {
+    MODE_OFF,
+    MODE_POS,  //Used when going in a target position
+    MODE_OPEN, //Used when driving a set command
+} mtrDriveMode_e;
+
 typedef struct {
     bool active;
     int64_t t_coast;
@@ -54,6 +60,14 @@ typedef struct {
 } mtrCfg_t;
 
 typedef struct {
+    int64_t t_prev;
+    int64_t t_start;
+    int64_t t_lastDirChanged;
+} positionControlTimeParams_t;
+
+typedef struct {
+    bool            enabled;
+    mtrDriveMode_e  driveMode;
     uint16_t        debugFlag;
     mtrDriveState_e driverState;
     mtrDriveDir_e   driveDir;
@@ -73,6 +87,7 @@ typedef struct {
 
     // Coast Logic Params
     coastParams_t coast;
+    positionControlTimeParams_t t_loop;
 
     /*
         TODO: Use eventually to keep track of the running state of
@@ -89,14 +104,18 @@ typedef struct {
 
 
 void motorInit(mtrState_t* mtrState);
-
+// Turn motor on/off
+void setMotorEnable(mtrState_t* mtrState, bool enable);
+// Change motor control mode
+void setDriveMode(mtrState_t* mtrState, mtrDriveMode_e setMode);
+// Set the drive feeding to the motor
 void setMotorDrive(mtrState_t *mtrState, mtrDriveDir_e setDrive);
+void loadDefaults(mtrState_t * mtrState);
+float percentOpen(float angle);
+void setTargetPercent(mtrState_t *mtrState, float target);
+void motorControlTask(void* arg);
 
-float percent_open(float angle);
-void set_target_percent(int pct);
-void motor_control_task(void* arg);
-
-int motorCtrlMain(void);
+int motorCtrlMain(mtrState_t *mtrState);
 
 
 #endif

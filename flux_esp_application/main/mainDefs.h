@@ -11,15 +11,27 @@ typedef enum {
     RESP_OK,
 } resp_t;
 
+
 #define RETURN_IF_ERR(sts)          \
     if ((sts) == RESP_ERR) {        \
-        return RESP_ERR;            \
+        return;                     \
     }
 
 #define RETURN_IF_ERR_LOG(sts, ...) \
     if ((sts) == RESP_ERR) {        \
         LOG_E(__VA_ARGS__);         \
-        return RESP_ERR;            \
+        return;                     \
+    }
+
+#define RETURN_VAL_IF_ERR(sts, ret) \
+    if ((sts) == RESP_ERR) {        \
+        return (ret);               \
+    }
+
+#define RETURN_VAL_IF_ERR_LOG(sts, ret, ...) \
+    if ((sts) == RESP_ERR) {                 \
+        LOG_E(__VA_ARGS__);                  \
+        return (ret);                        \
     }
 
 #endif // MAINDEFS_H
