@@ -9,34 +9,70 @@
 
 #include <stdbool.h>
 #include "nimble/ble.h"
+#include "host/ble_uuid.h"
 #include "modlog/modlog.h"
 #include "esp_peripheral.h"
-#ifdef __cplusplus
-extern "C" {
-#endif
-#
+#include "mainDefs.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
+
 struct ble_hs_cfg;
 struct ble_gatt_register_ctxt;
 
 /*Data buffers*/
 extern float current_temp; // Celsius
-extern float target_temp; // Celsius 
+extern float target_temp; // Celsius
 extern float motor_current; //Amps
-extern int motor_pos; //Position/Angle in degrees 
+extern int motor_pos; //Position/Angle in degrees
+
+typedef enum {
+    CURR_TEMP_CHR,
+    TARGET_TEMP_CHR,
+    MTR_CURRENT_CHR,
+    MTR_POS_CHR,
+
+    MAX_CHR_CNT,
+} charIdx_e;
+
+typedef enum {
+    CHR_FLOAT,
+    CHR_INT32,
+    CHR_UINT32,
+} charValType_e;
+
+typedef struct {
+    union {
+        float           value_f;
+        int32_t         value_i;
+    };
+    charValType_e       type;
+    uint16_t           *handle;
+    uint16_t            conn_handle;
+    bool                handle_init;
+    bool                handle_sts;
+
+    const ble_uuid128_t uuid;
+
+} characteristics_t;
+
+typedef struct {
+    characteristics_t chars[MAX_CHR_CNT];
+    ble_uuid128_t svcUuid;
+} bleSvc_t;
+
 
 /** GATT server. */
 #define GATT_SVR_SVC_ALERT_UUID               0x1811
-#define GATT_SVR_CHR_SUP_NEW_ALERT_CAT_UUID   0x2A47
-#define GATT_SVR_CHR_NEW_ALERT                0x2A46
-#define GATT_SVR_CHR_SUP_UNR_ALERT_CAT_UUID   0x2A48
-#define GATT_SVR_CHR_UNR_ALERT_STAT_UUID      0x2A45
-#define GATT_SVR_CHR_ALERT_NOT_CTRL_PT        0x2A44
+#define GATT_SVR_CHR_SUP_NEW_ALERT_CAT_UUID   0x2A47 //Not used
+#define GATT_SVR_CHR_NEW_ALERT                0x2A46 //Not used
+#define GATT_SVR_CHR_SUP_UNR_ALERT_CAT_UUID   0x2A48 //Not used
+#define GATT_SVR_CHR_UNR_ALERT_STAT_UUID      0x2A45 //Not used
+#define GATT_SVR_CHR_ALERT_NOT_CTRL_PT        0x2A44 //Not used
 
-void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg);
-int  gatt_svr_init(void);
-void start_ble_service(void);
-#ifdef __cplusplus
-}
-#endif
+void gattSvrRegisterCb(struct ble_gatt_register_ctxt *ctxt, void *arg);
+void gattSvrSubscribeCb(struct ble_gap_event *event);
+void notifyCharUpdate(characteristics_t chr);
+int  gatt_svr_init(bleSvc_t *bleSvc);
+void start_ble_service(bleSvc_t *bleSvc);
 
 #endif

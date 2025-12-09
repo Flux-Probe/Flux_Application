@@ -14,38 +14,33 @@
 #include "services/gap/ble_svc_gap.h"
 #include "fluxBleService.h"
 
-#define BLE_DYNAMIC_SERVICE_ADD 1
-#define BLE_DYNAMIC_SERVICE_DELETE 0
-extern const struct ble_gatt_svc_def gatt_svr_svcs[];
-static const char *tag = "NimBLE_DYNAMIC_SERVICE";
-static int dynamic_service_gap_event(struct ble_gap_event *event, void *arg);
+#define TAG "BLE_SVR"
+#define BLE_service_ADD 1
+#define BLE_service_DELETE 0
+
+static int gap_handler(struct ble_gap_event *event, void *arg);
 static uint8_t own_addr_type;
 static const char *dev_name = "FLUX_BLE_HOST";
 
 /**
  * Logs information about a connection to the console.
  */
-static void dynamic_service_print_conn_desc(struct ble_gap_conn_desc *desc)
+static void print_conn_desc(struct ble_gap_conn_desc *desc)
 {
-    MODLOG_DFLT(INFO, "handle=%d our_ota_addr_type=%d our_ota_addr=",
-                desc->conn_handle, desc->our_ota_addr.type);
+    /* TODO: Make the print_addr behind a log level*/
+    LOG_W("handle=%d our_ota_addr_type=%d our_ota_addr=",
+          desc->conn_handle, desc->our_ota_addr.type);
     print_addr(desc->our_ota_addr.val);
-    MODLOG_DFLT(INFO, " our_id_addr_type=%d our_id_addr=",
-                desc->our_id_addr.type);
+    LOG_W(" our_id_addr_type=%d our_id_addr=", desc->our_id_addr.type);
     print_addr(desc->our_id_addr.val);
-    MODLOG_DFLT(INFO, " peer_ota_addr_type=%d peer_ota_addr=",
-                desc->peer_ota_addr.type);
+    LOG_W(" peer_ota_addr_type=%d peer_ota_addr=", desc->peer_ota_addr.type);
     print_addr(desc->peer_ota_addr.val);
-    MODLOG_DFLT(INFO, " peer_id_addr_type=%d peer_id_addr=",
-                desc->peer_id_addr.type);
+    LOG_W(" peer_id_addr_type=%d peer_id_addr=", desc->peer_id_addr.type);
     print_addr(desc->peer_id_addr.val);
-    MODLOG_DFLT(INFO, " conn_itvl=%d conn_latency=%d supervision_timeout=%d "
-                "encrypted=%d authenticated=%d bonded=%d\n",
-                desc->conn_itvl, desc->conn_latency,
-                desc->supervision_timeout,
-                desc->sec_state.encrypted,
-                desc->sec_state.authenticated,
-                desc->sec_state.bonded);
+    LOG_W(" conn_itvl=%d conn_latency=%d supervision_timeout=%d encrypted=%d "
+          "authenticated=%d bonded=%d\n", desc->conn_itvl, desc->conn_latency,
+          desc->supervision_timeout, desc->sec_state.encrypted,
+          desc->sec_state.authenticated, desc->sec_state.bonded);
 }
 
 /**
@@ -53,7 +48,7 @@ static void dynamic_service_print_conn_desc(struct ble_gap_conn_desc *desc)
  *     o General discoverable mode.
  *     o Undirected connectable mode.
  */
-static void dynamic_service_advertise(void)
+static void start_advertising(void)
 {
     struct ble_gap_adv_params adv_params;
     struct ble_hs_adv_fields fields;
@@ -97,18 +92,23 @@ static void dynamic_service_advertise(void)
 
     rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
-        MODLOG_DFLT(ERROR, "error setting advertisement data; rc=%d\n", rc);
+        LOG_E("error setting advertisement data; rc=%d\n", rc);
         return;
     }
+
+    /*
+        RFI: Could possibly add a response set of fields below similar to above.
+        Not sure if needed yet...
+    */
 
     /* Begin advertising. */
     memset(&adv_params, 0, sizeof adv_params);
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
     rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER,
-                           &adv_params, dynamic_service_gap_event, NULL);
+                           &adv_params, gap_handler, NULL);
     if (rc != 0) {
-        MODLOG_DFLT(ERROR, "error enabling advertisement; rc=%d\n", rc);
+        LOG_E("error enabling advertisement; rc=%d\n", rc);
         return;
     }
 }
@@ -116,19 +116,19 @@ static void dynamic_service_advertise(void)
 /**
  * The nimble host executes this callback when a GAP event occurs.  The
  * application associates a GAP event callback with each connection that forms.
- * dynamic_service uses the same callback for all connections.
+ * service uses the same callback for all connections.
  *
  * @param event                 The type of event being signalled.
  * @param ctxt                  Various information pertaining to the event.
  * @param arg                   Application-specified argument; unused by
- *                                  dynamic_service.
+ *                              service.
  *
  * @return                      0 if the application successfully handled the
  *                                  event; nonzero on failure.  The semantics
  *                                  of the return code is specific to the
  *                                  particular GAP event being signalled.
  */
-static int dynamic_service_gap_event(struct ble_gap_event *event, void *arg)
+static int gap_handler(struct ble_gap_event *event, void *arg)
 {
     struct ble_gap_conn_desc desc;
     int rc;
@@ -136,87 +136,72 @@ static int dynamic_service_gap_event(struct ble_gap_event *event, void *arg)
     switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
         /* A new connection was established or a connection attempt failed. */
-        MODLOG_DFLT(INFO, "connection %s; status=%d ",
+        LOG_V("connection %s; status=%d ",
                     event->connect.status == 0 ? "established" : "failed",
                     event->connect.status);
         if (event->connect.status == 0) {
             rc = ble_gap_conn_find(event->connect.conn_handle, &desc);
             assert(rc == 0);
-            dynamic_service_print_conn_desc(&desc);
+            print_conn_desc(&desc);
         }
-        MODLOG_DFLT(INFO, "\n");
-
-        if (event->connect.status != 0) {
+        else {
             /* Connection failed; resume advertising. */
-            dynamic_service_advertise();
+            start_advertising();
         }
 
         return 0;
 
     case BLE_GAP_EVENT_DISCONNECT:
-        MODLOG_DFLT(INFO, "disconnect; reason=%d ", event->disconnect.reason);
-        dynamic_service_print_conn_desc(&event->disconnect.conn);
-        MODLOG_DFLT(INFO, "\n");
+        LOG_V("disconnect; reason=%d ", event->disconnect.reason);
+        print_conn_desc(&event->disconnect.conn);
 
         /* Connection terminated; resume advertising. */
-        dynamic_service_advertise();
+        start_advertising();
         return 0;
 
     case BLE_GAP_EVENT_CONN_UPDATE:
         /* The central has updated the connection parameters. */
-        MODLOG_DFLT(INFO, "connection updated; status=%d ",
-                    event->conn_update.status);
+        LOG_V("connection updated; status=%d ", event->conn_update.status);
         rc = ble_gap_conn_find(event->conn_update.conn_handle, &desc);
         assert(rc == 0);
-        dynamic_service_print_conn_desc(&desc);
-        MODLOG_DFLT(INFO, "\n");
+        print_conn_desc(&desc);
+        LOG_V("\n");
         return 0;
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
-        MODLOG_DFLT(INFO, "advertise complete; reason=%d",
-                    event->adv_complete.reason);
-        dynamic_service_advertise();
+        LOG_V("advertise complete; reason=%d", event->adv_complete.reason);
+        start_advertising();
         return 0;
 
     case BLE_GAP_EVENT_NOTIFY_TX:
-        MODLOG_DFLT(INFO, "notify_tx event; conn_handle=%d attr_handle=%d "
-                    "status=%d is_indication=%d",
-                    event->notify_tx.conn_handle,
-                    event->notify_tx.attr_handle,
-                    event->notify_tx.status,
-                    event->notify_tx.indication);
+        LOG_V("notify_tx; conn_handle=%d attr_handle=%d sts=%d indication=%d",
+              event->notify_tx.conn_handle, event->notify_tx.attr_handle,
+              event->notify_tx.status, event->notify_tx.indication);
         return 0;
 
     case BLE_GAP_EVENT_SUBSCRIBE:
-        MODLOG_DFLT(INFO, "subscribe event; conn_handle=%d attr_handle=%d "
-                    "reason=%d prevn=%d curn=%d previ=%d curi=%d\n",
-                    event->subscribe.conn_handle,
-                    event->subscribe.attr_handle,
-                    event->subscribe.reason,
-                    event->subscribe.prev_notify,
-                    event->subscribe.cur_notify,
-                    event->subscribe.prev_indicate,
-                    event->subscribe.cur_indicate);
+        LOG_V("subscribe; conn_handle=%d attr_handle=%d reason=%d prevn=%d "
+              "curn=%d previ=%d curi=%d\n", event->subscribe.conn_handle,
+              event->subscribe.attr_handle, event->subscribe.reason,
+              event->subscribe.prev_notify, event->subscribe.cur_notify,
+              event->subscribe.prev_indicate, event->subscribe.cur_indicate);
+        gattSvrSubscribeCb(event);
         return 0;
 
     case BLE_GAP_EVENT_MTU:
-        MODLOG_DFLT(INFO, "mtu update event; conn_handle=%d cid=%d mtu=%d\n",
-                    event->mtu.conn_handle,
-                    event->mtu.channel_id,
-                    event->mtu.value);
+        LOG_V("mtu update; conn_handle=%d cid=%d mtu=%d\n",
+              event->mtu.conn_handle, event->mtu.channel_id, event->mtu.value);
         return 0;
-
     }
-
     return 0;
 }
 
-static void dynamic_service_on_reset(int reason)
+static void service_on_reset(int reason)
 {
-    MODLOG_DFLT(ERROR, "Resetting state; reason=%d\n", reason);
+    LOG_E("Resetting state; reason=%d\n", reason);
 }
 
-static void dynamic_service_on_sync(void)
+static void service_on_sync(void)
 {
     int rc;
 
@@ -227,7 +212,7 @@ static void dynamic_service_on_sync(void)
     /* Figure out address to use while advertising (no privacy for now) */
     rc = ble_hs_id_infer_auto(0, &own_addr_type);
     if (rc != 0) {
-        MODLOG_DFLT(ERROR, "error determining address type; rc=%d\n", rc);
+        LOG_E("error determining address type; rc=%d\n", rc);
         return;
     }
 
@@ -235,57 +220,46 @@ static void dynamic_service_on_sync(void)
     uint8_t addr_val[6] = {0};
     rc = ble_hs_id_copy_addr(own_addr_type, addr_val, NULL);
 
-    MODLOG_DFLT(INFO, "Device Address: ");
+    LOG_V("Device Address: ");
     print_addr(addr_val);
-    MODLOG_DFLT(INFO, "\n");
+    LOG_V("\n");
     /* Begin advertising. */
-    dynamic_service_advertise();
+    start_advertising();
 }
 
-static void dynamic_service_host_task(void *param)
+static void service_host_task(void *param)
 {
-    ESP_LOGI(tag, "BLE Host Task Started");
     /* This function will return only when nimble_port_stop() is executed */
     nimble_port_run();
 
     nimble_port_freertos_deinit();
 }
 
-void start_ble_service(void)
+void start_ble_service(bleSvc_t *bleSvc)
 {
     int rc;
 
-    /* Initialize NVS — it is used to store PHY calibration data */
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+    esp_log_level_set(TAG, ESP_LOG_ERROR | ESP_LOG_DEBUG); // Setting debug
+    esp_log_level_set("NimBLE", ESP_LOG_ERROR); // Setting debug
 
-    ret = nimble_port_init();
+    esp_err_t ret = nimble_port_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(tag, "Failed to init nimble %d ", ret);
+        LOG_E("Failed to init nimble %d ", ret);
         return;
     }
     /* Initialize the NimBLE host configuration. */
-    ble_hs_cfg.reset_cb = dynamic_service_on_reset;
-    ble_hs_cfg.sync_cb = dynamic_service_on_sync;
-    ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb;
+    ble_hs_cfg.reset_cb = service_on_reset;
+    ble_hs_cfg.sync_cb = service_on_sync;
+    ble_hs_cfg.gatts_register_cb = gattSvrRegisterCb;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
 
-    rc = gatt_svr_init();
+    ble_svc_gap_init(); //Lets clients see device name, advertising info
+    rc = gatt_svr_init(bleSvc);
     assert(rc == 0);
 
     /* Set the default device name. */
     rc = ble_svc_gap_device_name_set(dev_name);
     assert(rc == 0);
 
-    nimble_port_freertos_init(dynamic_service_host_task);
-
-    // while(1) {
-    //     vTaskDelay(5000 / portTICK_PERIOD_MS);
-    //     MODLOG_DFLT(INFO, "Current temp %.2f| target_temp %.2f| mtr pos %d", current_temp, target_temp, motor_pos);
-    // }
-
+    nimble_port_freertos_init(service_host_task);
 }
