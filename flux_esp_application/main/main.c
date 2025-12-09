@@ -6,9 +6,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 // BLE MODULE
-// #include "fluxBleService.h"
+#include "fluxBleService.h"
 #include "motorCtrl.h"
 #include "wifiSetup.h"
+#include "fluxBleService.h"
 #include "webApp.h"
 #include "mainDefs.h"
 #include "nvs_flash.h"
@@ -17,11 +18,16 @@
 
 static int logLvl = ESP_LOG_DEBUG;
 
+#define VAL_LIM 1000
+
 typedef struct {
     mtrState_t valveMotor;
     webapp_t webApp;
     wifiConn_t wifi;
+    bleSvc_t bleSvc;
 } espIf_t;
+
+static espIf_t espIF;
 
 resp_t initFlash(void)
 {
@@ -39,33 +45,88 @@ resp_t initFlash(void)
     return RESP_OK;
 }
 
+void testTask(void *arg)
+{
+    espIf_t *espIf = (espIf_t*)arg;
+    int32_t cntr = 0;
+    for (int i = 0; i < MAX_CHR_CNT; i++) {
+        if (espIF.bleSvc.chars[i].type == CHR_FLOAT) {
+            LOG_I("Starting Vals: Idx=%d | %.2f", i, espIF.bleSvc.chars[i].value_f);
+        }
+        else {
+            LOG_I("Starting Vals: Idx=%d | %d", i, espIF.bleSvc.chars[i].value_i);
+        }
+    }
+
+    while(1) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        cntr ++;
+
+        // Dummy task to change the values of each characteristic to debug on the app
+        if (cntr % 1 == 0) {
+            espIf->bleSvc.chars[CURR_TEMP_CHR].value_f += 1;
+            if (espIf->bleSvc.chars[CURR_TEMP_CHR].value_f > VAL_LIM) {
+                espIf->bleSvc.chars[CURR_TEMP_CHR].value_f = 0;
+            }
+            notifyCharUpdate(espIF.bleSvc.chars[CURR_TEMP_CHR]);
+        }
+        if (cntr % 5 == 0)
+        {
+            espIf->bleSvc.chars[TARGET_TEMP_CHR].value_f += 0.5;
+            if (espIf->bleSvc.chars[TARGET_TEMP_CHR].value_f > VAL_LIM) {
+                espIf->bleSvc.chars[TARGET_TEMP_CHR].value_f = 0;
+            }
+            notifyCharUpdate(espIF.bleSvc.chars[TARGET_TEMP_CHR]);
+        }
+        if (cntr % 10 == 0)
+        {
+            espIf->bleSvc.chars[MTR_CURRENT_CHR].value_f += 0.5;
+            if (espIf->bleSvc.chars[MTR_CURRENT_CHR].value_f > VAL_LIM) {
+                espIf->bleSvc.chars[MTR_CURRENT_CHR].value_f = 0;
+            }
+            notifyCharUpdate(espIF.bleSvc.chars[MTR_CURRENT_CHR]);
+        }
+        if (cntr % 2 == 0)
+        {
+            espIf->bleSvc.chars[MTR_POS_CHR].value_i += 1;
+            if (espIf->bleSvc.chars[MTR_POS_CHR].value_i > VAL_LIM) {
+                espIf->bleSvc.chars[MTR_POS_CHR].value_i = 0;
+            }
+            notifyCharUpdate(espIF.bleSvc.chars[MTR_POS_CHR]);
+        }
+        LOG_I("Characterisitcs: %.2f|%.2f|%.2f|%d",
+              espIf->bleSvc.chars[CURR_TEMP_CHR].value_f,
+              espIf->bleSvc.chars[TARGET_TEMP_CHR].value_f,
+              espIf->bleSvc.chars[MTR_CURRENT_CHR].value_f,
+              espIf->bleSvc.chars[MTR_POS_CHR].value_i
+        );
+    }
+}
+
 void app_main(void)
 {
-    espIf_t espIf;
 
     resp_t sts = RESP_OK;
     esp_log_level_set(TAG, logLvl); // Setting debug
     sts = initFlash();
-    RETURN_IF_ERR_LOG(sts, "Error with Nvs Flash");
-    // start_ble_service();
 
-    LOG_I("Starting MotorCtrl");
-    int resp = motorCtrlMain(&espIf.valveMotor);
-    LOG_D("Done MotorCtrl init %d", resp);
+    RETURN_IF_ERR_LOG(sts, "Error with Nvs Flash");
+    start_ble_service(&espIF.bleSvc);
+
+    // LOG_I("Starting MotorCtrl");
+    // int resp = motorCtrlMain(&espIf.valveMotor);
+    // LOG_D("Done MotorCtrl init %d", resp);
 
     /*
      * TODO: Add config parameters for WIFI to connect to
      * Call the following only Once
     */
-    sts = wifi_conn_init(&espIf.wifi);
-    RETURN_IF_ERR_LOG(sts, "Error with Wifi init");
+    // sts = wifi_conn_init(&espIf.wifi);
+    // RETURN_IF_ERR_LOG(sts, "Error with Wifi init");
 
-    start_http_server(&espIf.webApp, &espIf.valveMotor);
+    // start_http_server(&espIf.webApp, &espIf.valveMotor);
 
-
-    while(1) {
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
-    }
+    xTaskCreate(testTask, "testTask", 4096, &espIF, 10, NULL);
 
 
 }
