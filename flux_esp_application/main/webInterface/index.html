@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ESP32 Dashboard</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      max-width: 600px;
+      margin: 40px auto;
+    }
+    h1 { color: #333; }
+    button, input[type=range] {
+      padding: 10px;
+      margin: 10px;
+      font-size: 16px;
+    }
+    #status {
+      font-size: 14px;
+      color: #666;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>ESP32 Control Panel</h1>
+
+  <h2>Motor Control</h2>
+  <button onclick="sendCmd('fwd')">Forward</button>
+  <button onclick="sendCmd('rev')">Reverse</button>
+  <button onclick="sendCmd('stop')">Stop</button>
+
+  <select id="setMtrMode" onchange="setMotorMode()">
+    <option value="0">Off</option>
+    <option value="1">Pos</option>
+    <option value="2">Open</option>
+  </select>
+
+  <h2>Set Valve Position</h2>
+  <input type="range" id="valveSlider" min="0" max="100" value="0" oninput="updateSliderValue(this.value)">
+  <div>Target: <span id="sliderVal">0</span>%</div>
+
+  <h2>Current Sensor Readings</h2>
+  <div>Angle: <span id="angle">--</span>°</div>
+  <div>Percent Open: <span id="pct">--</span>%</div>
+  <div>Target Angle: <span id="tgt">--</span>°</div>
+  <div>Drive Dir: <span id="dir">--</span></div>
+  <div>Drive Mode: <span id="mtrMode">--</span></div>
+
+  <div id="status">Connecting...</div>
+
+  <input type="checkbox" onchange="selectMtr(this)" id="mtrStatus">Motor on?</button>
+
+  <script>
+    function sendCmd(dir) {
+      fetch(`/cmd?dir=${dir}`)
+        .then(() => updateStatus(`Command: ${dir}`))
+        .catch(() => updateStatus("Failed to send command"));
+    }
+
+    function updateSliderValue(val) {
+      document.getElementById('sliderVal').innerText = val;
+      fetch(`/setpct?val=${val}`).catch(() => updateStatus("Failed to set percent"));
+    }
+
+    function fetchSensorData() {
+      fetch('/angle')
+        .then(res => res.text())
+        .then(data => {
+              const [angle, pct, tgt, dir, mtrSt, mtrMode] = data.split(',');
+              document.getElementById('angle').innerText = angle;
+              document.getElementById('pct').innerText = pct;
+              document.getElementById('tgt').innerText = tgt;
+              document.getElementById('dir').innerText = dir;
+              document.getElementById('mtrSt').checked = mtrSt;
+              document.getElementById('mtrMode').innerText = mtrMode;
+        });
+    }
+
+    function setMotorMode() {
+      mode = document.getElementById('setMtrMode').value;
+      fetch(`/mtrMode?mode=${mode}`)
+        .then(() => updateStatus(`Command: set motor mode sent`))
+        .catch(() => updateStatus("Failed to send set Motor mode"));
+    }
+
+    function selectMtr() {
+      var checkBox = document.getElementById("mtrStatus");
+      enable = 0;
+      if (checkBox.checked == true){
+        enable = 1;
+      }
+      fetch(`/mtrSt?state=${enable}`)
+        .then(() => updateStatus(`Mtr State: ${checkbox.checked}`))
+        .catch(() => updateStatus("Failed to send Mtr State"));
+
+    }
+
+    function updateStatus(msg) {
+      document.getElementById('status').innerText = msg;
+    }
+
+    setInterval(fetchSensorData, 100);
+  </script>
+
+</body>
+</html>
