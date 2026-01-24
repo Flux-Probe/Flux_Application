@@ -11,6 +11,19 @@ typedef enum {
     RESP_OK,
 } resp_t;
 
+#define CHECK_PTR_RET_ERR(ptr, ...)         \
+    if (ptr == NULL) {                      \
+        LOG_E("INVALID PTR %d", __LINE__);  \
+        LOG_E(__VA_ARGS__);                 \
+        return RESP_ERR;                    \
+    }                                       \
+
+#define CHECK_PTR_RET(ptr, ...)             \
+    if (ptr == NULL) {                      \
+        LOG_E("INVALID PTR %d", __LINE__);  \
+        LOG_E(__VA_ARGS__);                 \
+        return;                             \
+    }                                       \
 
 #define RETURN_IF_ERR(sts)          \
     if ((sts) == RESP_ERR) {        \

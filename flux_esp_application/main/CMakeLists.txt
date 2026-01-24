@@ -1,16 +1,18 @@
 set(srcs "main.c"
-         "bleModule/gattSvr.c"
-         "bleModule/fluxBleService.c"
+        #  "bleModule/gattSvr.c"
+        #  "bleModule/fluxBleService.c"
          "motorCtrl/motorCtrl.c"
-         "as5600/as5600.c"
+         "motorDrivers/motorDriver_L293D.c"
+         "feedback/as5600.c"
          "webInterface/wifiSetup.c"
          "webInterface/webApp.c"
          )
 
 set(dirs "."
-        "bleModule"
+        # "bleModule"
         "motorCtrl"
-        "as5600"
+        "motorDrivers"
+        "feedback"
         "webInterface"
         )
 

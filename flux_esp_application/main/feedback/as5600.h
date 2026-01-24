@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "driver/i2c_master.h"
-#include "mainDefs.h"
+#include "feedback.h"
 
 #define MAX_READ_SIZE 2 //Only 2 bytes reading at a time
 #define MAX_WRITE_SIZE 2 //Only 2 bytes reading at a time
@@ -30,25 +30,13 @@ typedef struct {
 } i2cCfg_t;
 
 typedef struct {
-    uint16_t     dbgFlag;
-
+    uint16_t dbgFlag;
     i2cCfg_t i2cCfg;
-    i2c_master_bus_handle_t i2cBus;
-    i2c_master_dev_handle_t i2cDev;
-
-    uint8_t  dataBuf[MAX_READ_SIZE];
-    int32_t  rawData;
-    float    angle;
-    uint8_t  readCount;
     uint8_t  writeData[MAX_WRITE_SIZE];
-    uint8_t  addr;
     uint32_t i2cPort;
     uint32_t readTimeout;
 } as5600_cfg_t;
 
-resp_t readAS5600Raw(as5600_cfg_t *cfg);
-float readAS5600Deg(as5600_cfg_t *cfg);
-
-resp_t as5600Init(as5600_cfg_t *cfg);
+feedback_t *as5600Init(as5600_cfg_t cfg);
 
 #endif
