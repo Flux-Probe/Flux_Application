@@ -15,7 +15,7 @@ typedef struct {
     httpd_handle_t server;
 } webapp_t;
 
-void start_http_server(webapp_t *web, mtrState_t *mtr);
+void start_http_server(webapp_t *web, motorCtrlCtx_t *mtr);
 
 
 #endif
