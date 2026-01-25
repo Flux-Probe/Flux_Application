@@ -16,7 +16,7 @@ set(dirs "."
         "webInterface"
         )
 
-set(requires driver esp_timer esp_wifi
+set(requires driver esp_timer esp_wifi esp_driver_mcpwm
              esp_https_server)
 
 set(privReq bt nvs_flash)

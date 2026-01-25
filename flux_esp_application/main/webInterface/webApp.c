@@ -6,11 +6,12 @@
 #include <math.h>
 
 esp_err_t handleRoot(httpd_req_t *req);
-esp_err_t handleCmd(httpd_req_t *req);
 esp_err_t handleSetpct(httpd_req_t *req);
-esp_err_t handleAngle(httpd_req_t *req);
-esp_err_t handleMtrState(httpd_req_t *req);
+esp_err_t handleGetData(httpd_req_t *req);
+esp_err_t handleMtrEnable(httpd_req_t *req);
 esp_err_t handleMtrMode(httpd_req_t *req);
+esp_err_t handleMtrIdx(httpd_req_t *req);
+esp_err_t handleMtrSpeed(httpd_req_t *req);
 // esp_err_t handleDebug(httpd_req_t *req);
 // esp_err_t handleTemp(httpd_req_t *req);
 esp_err_t handlePing(httpd_req_t *req);
@@ -24,21 +25,23 @@ extern const char index_html_end[]   asm("_binary_index_html_end");
 
 #define TAG "WEBAPP"
 
+int tgtIdx = 0;
+
 httpd_uri_t methodUris[] = {
+    // {
+    //     .uri = "/cmd",
+    //     .method = HTTP_GET,
+    //     .handler = handleCmd
+    // },
+    // {
+    //     .uri = "/setpct",
+    //     .method = HTTP_GET,
+    //     .handler = handleSetpct,
+    // },
     {
-        .uri = "/cmd",
+        .uri = "/getData",
         .method = HTTP_GET,
-        .handler = handleCmd
-    },
-    {
-        .uri = "/setpct",
-        .method = HTTP_GET,
-        .handler = handleSetpct,
-    },
-    {
-        .uri = "/angle",
-        .method = HTTP_GET,
-        .handler = handleAngle,
+        .handler = handleGetData,
     },
     {
         .uri = "/ping",
@@ -46,14 +49,24 @@ httpd_uri_t methodUris[] = {
         .handler = handlePing,
     },
     {
-        .uri = "/mtrSt",
+        .uri = "/mtrEnable",
         .method = HTTP_GET,
-        .handler = handleMtrState,
+        .handler = handleMtrEnable,
     },
     {
         .uri = "/mtrMode",
         .method = HTTP_GET,
         .handler = handleMtrMode,
+    },
+    {
+        .uri = "/mtrIdx",
+        .method = HTTP_GET,
+        .handler = handleMtrIdx,
+    },
+    {
+        .uri = "/mtrSpeed",
+        .method = HTTP_GET,
+        .handler = handleMtrSpeed,
     },
     // {
     //     .uri = "/temp",
@@ -104,10 +117,11 @@ esp_err_t handleRoot(httpd_req_t *req)
     return httpd_resp_send(req, index_html_start, index_html_end - index_html_start);
 }
 
+/*
 esp_err_t handleCmd(httpd_req_t *req)
 {
     motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[MOTOR_1];
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
 
     char param[MAX_URI_PARAM_LEN] = {0};
     LOG_I("Calling set cmd");
@@ -131,12 +145,12 @@ esp_err_t handleCmd(httpd_req_t *req)
         LOG_E("Error when parsing URI: handleCmd");
     }
     return httpd_resp_send(req, NULL, 0);  // 204
-}
+}*/
 
-esp_err_t handleMtrState(httpd_req_t *req)
+esp_err_t handleMtrEnable(httpd_req_t *req)
 {
     motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[MOTOR_1];
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
 
     char param[MAX_URI_PARAM_LEN] = {0};
     LOG_I("Calling set mtrState");
@@ -149,7 +163,7 @@ esp_err_t handleMtrState(httpd_req_t *req)
         setMotorEnable(mtr, enable);
     }
     else {
-        LOG_E("Error when parsing URI: handleMtrState");
+        LOG_E("Error when parsing URI: handleMtrEnable");
     }
     return httpd_resp_send(req, NULL, 0);  // 204
 }
@@ -157,7 +171,7 @@ esp_err_t handleMtrState(httpd_req_t *req)
 esp_err_t handleMtrMode(httpd_req_t *req)
 {
     motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[MOTOR_1];
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
 
     char param[MAX_URI_PARAM_LEN] = {0};
     LOG_I("Calling set mtr mode");
@@ -167,19 +181,66 @@ esp_err_t handleMtrMode(httpd_req_t *req)
         // Cancel closed loop, learning, etc.
         mtrDriveMode_e mode = atoi(param);
         LOG_I("Setting Mtr Mode: %d", mode);
-
-        mtr->ctrlMode = mode;
+        setDriveMode(mtr, mode);
     }
     else {
-        LOG_E("Error when parsing URI: handleMtrState");
+        LOG_E("Error when parsing URI: handleMtrMode");
     }
     return httpd_resp_send(req, NULL, 0);  // 204
 }
 
+esp_err_t handleMtrIdx(httpd_req_t *req)
+{
+    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
+
+    char param[MAX_URI_PARAM_LEN] = {0};
+    LOG_I("Calling set mtr mode");
+    resp_t sts = handleGetUri(req, param, "idx");
+
+    if (sts == RESP_OK) {
+        // Cancel closed loop, learning, etc.
+        int setIdx = atoi(param);
+        LOG_I("Setting mtrIdx: %d", setIdx);
+        if (setIdx >= mtrCtrl->numMotors) {
+            LOG_W("Invalid motor Idx set");
+        }
+        else {
+            tgtIdx = setIdx;
+        }
+    }
+    else {
+        LOG_E("Error when parsing URI: handleMtrIdx");
+    }
+    return httpd_resp_send(req, NULL, 0);  // 204
+}
+
+esp_err_t handleMtrSpeed(httpd_req_t *req)
+{
+    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
+
+    char param[MAX_URI_PARAM_LEN] = {0};
+    LOG_I("Calling set mtr Speed");
+    resp_t sts = handleGetUri(req, param, "speed");
+
+    if (sts == RESP_OK) {
+        // Cancel closed loop, learning, etc.
+        int setSpeed = atoi(param);
+        LOG_I("Setting mtrSpeed: %d", setSpeed);
+        setDrivePwm(mtr, setSpeed);
+    }
+    else {
+        LOG_E("Error when parsing URI: handleMtrSpeed");
+    }
+    return httpd_resp_send(req, NULL, 0);  // 204
+}
+
+
+
 esp_err_t handleSetpct(httpd_req_t *req)
 {
     motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[MOTOR_1];
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
 
     char param[MAX_URI_PARAM_LEN] = {0};
     LOG_V("Calling set pct");
@@ -194,21 +255,21 @@ esp_err_t handleSetpct(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);  // 204
 }
 
-esp_err_t handleAngle(httpd_req_t *req)
+esp_err_t handleGetData(httpd_req_t *req)
 {
     motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[MOTOR_1];
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
 
     // float ang = readAS5600Deg(&mtr->encoderCfg);
     float ang   = mtr->position;
-    float tgt   = mtr->cmd;
-    // int dir     = mtr->driveDir;
-    bool mtrSt  = mtr->enabled;
-    int mtrMode = mtr->ctrlMode;
+    int tgt   = mtr->cmd;
+    int dir     = mtr->dir;
+    int mtrSt  = (int) mtr->enabled;
+    int mtrMode = (int) mtr->ctrlMode;
     // float pct   = percentOpen(ang);
     char resp[64];
-    snprintf(resp, sizeof(resp), "%.1f,%.1f,%d,%d", ang, tgt,
-             mtrSt, mtrMode);
+    snprintf(resp, sizeof(resp), "%.1f,%d,%d,%d,%d,%d", ang, tgt, mtrSt,
+             mtrMode, tgtIdx, dir);
     httpd_resp_set_type(req, "text/plain; charset=utf-8");
     return httpd_resp_send(req, resp, strlen(resp));
 }
