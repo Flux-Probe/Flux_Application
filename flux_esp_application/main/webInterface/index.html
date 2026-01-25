@@ -39,6 +39,11 @@
     <option value="2">Open</option>
   </select>
 
+  <select id="setMtrIdx" onchange="setMtrIdx()">
+    <option value="0">MOTOR_1</option>
+    <option value="1">MOTOR_2</option>
+  </select>
+
   <h2>Set Valve Position</h2>
   <input type="range" id="valveSlider" min="0" max="100" value="0" oninput="updateSliderValue(this.value)">
   <div>Target: <span id="sliderVal">0</span>%</div>
@@ -49,6 +54,7 @@
   <div>Target Angle: <span id="tgt">--</span>°</div>
   <div>Drive Dir: <span id="dir">--</span></div>
   <div>Drive Mode: <span id="mtrMode">--</span></div>
+  <div>Target Idx: <span id="tgtIdx">--</span></div>
 
   <div id="status">Connecting...</div>
 
@@ -70,13 +76,14 @@
       fetch('/angle')
         .then(res => res.text())
         .then(data => {
-              const [angle, pct, tgt, dir, mtrSt, mtrMode] = data.split(',');
+              const [angle, pct, tgt, dir, mtrSt, mtrMode, idx] = data.split(',');
               document.getElementById('angle').innerText = angle;
               document.getElementById('pct').innerText = pct;
               document.getElementById('tgt').innerText = tgt;
               document.getElementById('dir').innerText = dir;
               document.getElementById('mtrSt').checked = mtrSt;
               document.getElementById('mtrMode').innerText = mtrMode;
+              document.getElementById('tgtIdx').innerText = idx;
         });
     }
 
@@ -85,6 +92,13 @@
       fetch(`/mtrMode?mode=${mode}`)
         .then(() => updateStatus(`Command: set motor mode sent`))
         .catch(() => updateStatus("Failed to send set Motor mode"));
+    }
+
+    function setMtrIdx() {
+      idx = document.getElementById('setMtrIdx').value;
+      fetch(`/mtrIdx?idx=${idx}`)
+        .then(() => updateStatus(`Command: set motor Idx sent`))
+        .catch(() => updateStatus("Failed to send set Motor Idx"));
     }
 
     function selectMtr() {

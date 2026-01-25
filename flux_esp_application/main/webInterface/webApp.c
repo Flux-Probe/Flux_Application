@@ -11,6 +11,7 @@ esp_err_t handleSetpct(httpd_req_t *req);
 esp_err_t handleAngle(httpd_req_t *req);
 esp_err_t handleMtrState(httpd_req_t *req);
 esp_err_t handleMtrMode(httpd_req_t *req);
+esp_err_t handleMtrIdx(httpd_req_t *req);
 // esp_err_t handleDebug(httpd_req_t *req);
 // esp_err_t handleTemp(httpd_req_t *req);
 esp_err_t handlePing(httpd_req_t *req);
@@ -19,10 +20,12 @@ esp_err_t handlePing(httpd_req_t *req);
 extern const char index_html_start[] asm("_binary_index_html_start");
 extern const char index_html_end[]   asm("_binary_index_html_end");
 
-#define MAX_URIS 6
+#define MAX_URIS 7
 #define MAX_URI_PARAM_LEN 64
 
 #define TAG "WEBAPP"
+
+int tgtIdx = 0;
 
 httpd_uri_t methodUris[] = {
     {
@@ -54,6 +57,11 @@ httpd_uri_t methodUris[] = {
         .uri = "/mtrMode",
         .method = HTTP_GET,
         .handler = handleMtrMode,
+    },
+    {
+        .uri = "/mtrIdx",
+        .method = HTTP_GET,
+        .handler = handleMtrIdx,
     },
     // {
     //     .uri = "/temp",
@@ -107,7 +115,7 @@ esp_err_t handleRoot(httpd_req_t *req)
 esp_err_t handleCmd(httpd_req_t *req)
 {
     motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[MOTOR_1];
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
 
     char param[MAX_URI_PARAM_LEN] = {0};
     LOG_I("Calling set cmd");
@@ -136,7 +144,7 @@ esp_err_t handleCmd(httpd_req_t *req)
 esp_err_t handleMtrState(httpd_req_t *req)
 {
     motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[MOTOR_1];
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
 
     char param[MAX_URI_PARAM_LEN] = {0};
     LOG_I("Calling set mtrState");
@@ -157,7 +165,7 @@ esp_err_t handleMtrState(httpd_req_t *req)
 esp_err_t handleMtrMode(httpd_req_t *req)
 {
     motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[MOTOR_1];
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
 
     char param[MAX_URI_PARAM_LEN] = {0};
     LOG_I("Calling set mtr mode");
@@ -176,10 +184,36 @@ esp_err_t handleMtrMode(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);  // 204
 }
 
+esp_err_t handleMtrIdx(httpd_req_t *req)
+{
+    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
+
+    char param[MAX_URI_PARAM_LEN] = {0};
+    LOG_I("Calling set mtr mode");
+    resp_t sts = handleGetUri(req, param, "idx");
+
+    if (sts == RESP_OK) {
+        // Cancel closed loop, learning, etc.
+        int setIdx = atoi(param);
+        LOG_I("Setting mtrIdx: %d", setIdx);
+        if (setIdx >= mtrCtrl->numMotors) {
+            LOG_W("Invalid motor Idx set");
+        }
+        else {
+            tgtIdx = setIdx;
+        }
+    }
+    else {
+        LOG_E("Error when parsing URI: handleMtrState");
+    }
+    return httpd_resp_send(req, NULL, 0);  // 204
+}
+
+
 esp_err_t handleSetpct(httpd_req_t *req)
 {
     motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[MOTOR_1];
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
 
     char param[MAX_URI_PARAM_LEN] = {0};
     LOG_V("Calling set pct");
@@ -197,7 +231,7 @@ esp_err_t handleSetpct(httpd_req_t *req)
 esp_err_t handleAngle(httpd_req_t *req)
 {
     motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[MOTOR_1];
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
 
     // float ang = readAS5600Deg(&mtr->encoderCfg);
     float ang   = mtr->position;
@@ -207,8 +241,8 @@ esp_err_t handleAngle(httpd_req_t *req)
     int mtrMode = mtr->ctrlMode;
     // float pct   = percentOpen(ang);
     char resp[64];
-    snprintf(resp, sizeof(resp), "%.1f,%.1f,%d,%d", ang, tgt,
-             mtrSt, mtrMode);
+    snprintf(resp, sizeof(resp), "%.1f,%.1f,%d,%d,%d", ang, tgt,
+             mtrSt, mtrMode, tgtIdx);
     httpd_resp_set_type(req, "text/plain; charset=utf-8");
     return httpd_resp_send(req, resp, strlen(resp));
 }

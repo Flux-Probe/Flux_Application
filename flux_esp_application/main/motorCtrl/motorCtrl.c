@@ -14,6 +14,9 @@
 // Default Values
 #define IN1_PIN 22
 #define IN2_PIN 23
+#define IN3_PIN 16
+#define IN4_PIN 17
+#define EN2_PIN 4
 
 // ───── Motor ─────
 void setMotorEnable(motorCtx_t *motor, bool enable)
@@ -356,6 +359,41 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
 
     mtrCtrlCtx->mtrs[MOTOR_1].mtrState = STATE_OPERATIONAL;
     mtrCtrlCtx->mtrs[MOTOR_1].ctrlLoop = coastControlLoop;
+    /*===== Motor 2 initializaiton =====*/
+    motorDriverL293DCfg_t mtr2Cfg = {
+        .pinHigh = IN3_PIN,
+        .pinLow  = IN4_PIN,
+        .polarity = 1,
+        .pinCfg = {
+            .mode = GPIO_MODE_OUTPUT,
+            .pin_bit_mask = (1 << IN3_PIN) | (1 << IN4_PIN),
+        }
+    };
+
+    gpio_config_t enable2Cfg = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = (1 << EN2_PIN),
+    };
+    esp_err_t configGpio = gpio_config(&enable2Cfg);
+
+    if (configGpio == ESP_ERR_INVALID_ARG) {
+        LOG_E("Error when configuring GPIO");
+        return RESP_ERR;
+    }
+    gpio_set_level(EN2_PIN, HIGH);
+
+    /* motorIF init*/
+    mtrCtrlCtx->mtrs[MOTOR_2].motorIF = createMtrDriverIF_L293D(mtr2Cfg);
+    CHECK_PTR_RET_ERR(mtrCtrlCtx->mtrs[MOTOR_2].motorIF, "Error when initializing motorIF for mtr 2");
+    mtrCtrlCtx->mtrs[MOTOR_2].enabled = false;
+
+    sts = mtrCtrlCtx->mtrs[MOTOR_2].motorIF->setDrive(mtrCtrlCtx->mtrs[MOTOR_2].motorIF, 0.0);
+    RETURN_VAL_IF_ERR_LOG(sts, sts, "Err setting mtr 2 drive to 0")
+
+    mtrCtrlCtx->mtrs[MOTOR_2].mtrState = STATE_OPERATIONAL;
+    mtrCtrlCtx->mtrs[MOTOR_2].ctrlLoop = coastControlLoop;
+
+    mtrCtrlCtx->mtrs[MOTOR_2].fb = mtrCtrlCtx->mtrs[MOTOR_1].fb;
 
 
     /*===== END of Motor 1 Init =====*/
@@ -381,7 +419,7 @@ int motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx) {
     CHECK_PTR_RET_ERR(mtrCtrlCtx);
     esp_log_level_set(TAG, ESP_LOG_DEBUG); // Setting debug
 
-    mtrCtrlCtx->numMotors = 1; //TODO: Make this a macro
+    mtrCtrlCtx->numMotors = 2; //TODO: Make this a macro
     resp_t sts = motorInit(mtrCtrlCtx);
     RETURN_VAL_IF_ERR_LOG(sts, sts, "Error during motor Init");
 
