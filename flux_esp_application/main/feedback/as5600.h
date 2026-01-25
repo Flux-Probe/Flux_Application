@@ -15,9 +15,10 @@
 
 // TODO: Replace this #if with different configuration names.
 // #if 1
-#define I2C_PORT    I2C_NUM_0   // TODO: Confirm what is the i2c Port
-#define SDA_PIN     18
-#define SCL_PIN     19
+#define SDA_1_PIN     18
+#define SCL_1_PIN     19
+#define SDA_2_PIN     26
+#define SCL_2_PIN     25
 #define SDA_PULLUP_EN GPIO_PULLUP_ENABLE
 #define SCL_PULLUP_EN GPIO_PULLUP_ENABLE
 #define I2C_CLK_SPD 400000

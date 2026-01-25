@@ -29,9 +29,6 @@
   <h1>ESP32 Control Panel</h1>
 
   <h2>Motor Control</h2>
-  <button onclick="sendCmd('fwd')">Forward</button>
-  <button onclick="sendCmd('rev')">Reverse</button>
-  <button onclick="sendCmd('stop')">Stop</button>
 
   <select id="setMtrMode" onchange="setMotorMode()">
     <option value="0">Off</option>
@@ -39,44 +36,57 @@
     <option value="2">Open</option>
   </select>
 
-  <h2>Set Valve Position</h2>
+  <select id="setSpeed" onchange="setSpeed()">
+    <option value="0">0</option>
+    <option value="-400">-400</option>
+    <option value="-200">-200</option>
+    <option value="-150">-150</option>
+    <option value="-100">-100</option>
+    <option value="-50">-50</option>
+    <option value="50">50</option>
+    <option value="100">100</option>
+    <option value="150">150</option>
+    <option value="200">200</option>
+    <option value="400">400</option>
+    <option value="401">401</option>
+  </select>
+
+  <select id="setMtrIdx" onchange="setMtrIdx()">
+    <option value="0">MOTOR_1</option>
+    <option value="1">MOTOR_2</option>
+  </select>
+
+  <!-- <h2>Set Valve Position</h2>
   <input type="range" id="valveSlider" min="0" max="100" value="0" oninput="updateSliderValue(this.value)">
-  <div>Target: <span id="sliderVal">0</span>%</div>
+  <div>Target: <span id="sliderVal">0</span>%</div> -->
 
   <h2>Current Sensor Readings</h2>
   <div>Angle: <span id="angle">--</span>°</div>
-  <div>Percent Open: <span id="pct">--</span>%</div>
-  <div>Target Angle: <span id="tgt">--</span>°</div>
+  <!-- <div>Percent Open: <span id="pct">--</span>%</div> -->
+  <div>Cmd: <span id="tgt">--</span>°</div>
   <div>Drive Dir: <span id="dir">--</span></div>
   <div>Drive Mode: <span id="mtrMode">--</span></div>
+  <div>Target Idx: <span id="tgtIdx">--</span></div>
+  <div>Motor Enabled?: <span id="mtrEnable">--</span></div>
 
   <div id="status">Connecting...</div>
 
   <input type="checkbox" onchange="selectMtr(this)" id="mtrStatus">Motor on?</button>
 
   <script>
-    function sendCmd(dir) {
-      fetch(`/cmd?dir=${dir}`)
-        .then(() => updateStatus(`Command: ${dir}`))
-        .catch(() => updateStatus("Failed to send command"));
-    }
-
-    function updateSliderValue(val) {
-      document.getElementById('sliderVal').innerText = val;
-      fetch(`/setpct?val=${val}`).catch(() => updateStatus("Failed to set percent"));
-    }
 
     function fetchSensorData() {
-      fetch('/angle')
+      fetch('/getData')
         .then(res => res.text())
         .then(data => {
-              const [angle, pct, tgt, dir, mtrSt, mtrMode] = data.split(',');
+              const [angle, tgt, mtrSt, mtrMode, idx, dir] = data.split(',');
               document.getElementById('angle').innerText = angle;
-              document.getElementById('pct').innerText = pct;
+              // document.getElementById('pct').innerText = pct;
               document.getElementById('tgt').innerText = tgt;
               document.getElementById('dir').innerText = dir;
               document.getElementById('mtrSt').checked = mtrSt;
               document.getElementById('mtrMode').innerText = mtrMode;
+              document.getElementById('tgtIdx').innerText = idx;
         });
     }
 
@@ -87,14 +97,28 @@
         .catch(() => updateStatus("Failed to send set Motor mode"));
     }
 
+    function setMtrIdx() {
+      idx = document.getElementById('setMtrIdx').value;
+      fetch(`/mtrIdx?idx=${idx}`)
+        .then(() => updateStatus(`Command: set motor Idx sent`))
+        .catch(() => updateStatus("Failed to send set Motor Idx"));
+    }
+
+    function setSpeed() {
+      speed = document.getElementById('setSpeed').value;
+      fetch(`/mtrSpeed?speed=${speed}`)
+        .then(() => updateStatus(`Command: set motor Speed sent`))
+        .catch(() => updateStatus("Failed to send set Motor Speed"));
+    }
+
     function selectMtr() {
       var checkBox = document.getElementById("mtrStatus");
       enable = 0;
       if (checkBox.checked == true){
         enable = 1;
       }
-      fetch(`/mtrSt?state=${enable}`)
-        .then(() => updateStatus(`Mtr State: ${checkbox.checked}`))
+      fetch(`/mtrEnable?state=${enable}`)
+        .then(() => updateStatus(`Mtr State: ${enable}`))
         .catch(() => updateStatus("Failed to send Mtr State"));
 
     }
