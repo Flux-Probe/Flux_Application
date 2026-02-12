@@ -14,20 +14,22 @@
 // Default Values
 #define IN1_PIN 22
 #define IN2_PIN 23
-#define IN3_PIN 16
+#define IN3_PIN 16 //Connected to the on board LED. Need to remove
 #define IN4_PIN 17
+#define EN1_PIN 0
 #define EN2_PIN 4
 
 // ───── Motor ─────
 void setMotorEnable(motorCtx_t *motor, bool enable)
 {
-    if (enable != motor->enabled) {
-        // Setting either on or off, set mode and drive to OFF
-        // setMotorDrive(mtrState, MTR_STOP);
-        motor->ctrlMode = MODE_OFF;
-        LOG_I("Setting Motor to :%d", enable);
+    resp_t sts = motor->motorIF->enable(motor->motorIF);
+    if (sts == RESP_OK) {
+        motor->enabled = enable;
     }
-    motor->enabled = enable;
+    else {
+        motor->ctrlMode = MODE_OFF;
+        motor->enabled  = false;
+    }
 }
 
 // void setDriveMode(mtrState_t *mtrState, mtrDriveMode_e setMode)
@@ -37,7 +39,7 @@ void setMotorEnable(motorCtx_t *motor, bool enable)
 
 void setMotorDrive(motorCtx_t *motor, mtrDriveDir_e setDrive)
 {
-    motor->cmd = setDrive;
+    motor->dir = setDrive;
     LOG_V("Setting to mode '%d'", setDrive);
 }
 
@@ -235,6 +237,7 @@ void coastControlLoop(motorCtx_t *mtr)
     {
     case MODE_OFF:
     case MODE_OPEN:
+        mtr->motorIF->setDir(mtr->motorIF, mtr->dir);
         sts = mtr->motorIF->setDrive(mtr->motorIF, mtr->cmd);
         // Add error loggging?
         break;
@@ -268,8 +271,11 @@ void motorControlTask(void *arg)
             ctx->mtrs[idx].position += 0.1;
             ctx->mtrs[idx].ctrlLoop(&ctx->mtrs[idx]);
         }
-        LOG_W("Ctrl Loop: %d|%d|%.2f|%.2f", ctx->mtrs[0].ctrlMode, ctx->mtrs[0].enabled,
-                                            ctx->mtrs[0].cmd, ctx->mtrs[0].position);
+        LOG_W("Ctrl Loop: %d|%d|%d|%d|=====|%d|%d|%d|%d",
+                                            ctx->mtrs[0].ctrlMode, ctx->mtrs[0].enabled,
+                                            ctx->mtrs[0].cmd, ctx->mtrs[0].dir,
+                                            ctx->mtrs[1].ctrlMode, ctx->mtrs[1].enabled,
+                                            ctx->mtrs[1].cmd, ctx->mtrs[1].dir);
 
     }
 }
@@ -321,21 +327,19 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
 {
     /*===== Motor 1 initializaiton =====*/
     motorDriverL293DCfg_t mtr1Cfg = {
+        .enablePin = EN1_PIN,
         .pinHigh = IN1_PIN,
         .pinLow  = IN2_PIN,
         .polarity = 1,
-        .pinCfg = {
-            .mode = GPIO_MODE_OUTPUT,
-            .pin_bit_mask = (1 << IN1_PIN) | (1 << IN2_PIN),
-        }
+        .groupId = 0,
+        .pwmFreqHz = 25000,
+        .timerHz = 10000000
     };
     /* motorIF init*/
     mtrCtrlCtx->mtrs[MOTOR_1].motorIF = createMtrDriverIF_L293D(mtr1Cfg);
     CHECK_PTR_RET_ERR(mtrCtrlCtx->mtrs[MOTOR_1].motorIF, "Error when initializing motorIF for mtr 1");
-    // RETURN_VAL_IF_ERR_LOG(sts, sts, "Error when initializing motorIF for mtr 1");
 
     /*Feedback init*/
-
     as5600_cfg_t mtr1FbCfg;
     mtr1FbCfg.i2cCfg.masterCfg.i2c_port    = I2C_PORT;
     mtr1FbCfg.i2cCfg.masterCfg.sda_io_num  = SDA_PIN;
@@ -359,28 +363,18 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
 
     mtrCtrlCtx->mtrs[MOTOR_1].mtrState = STATE_OPERATIONAL;
     mtrCtrlCtx->mtrs[MOTOR_1].ctrlLoop = coastControlLoop;
+
+    /*===== END of Motor 1 Init =====*/
     /*===== Motor 2 initializaiton =====*/
     motorDriverL293DCfg_t mtr2Cfg = {
+        .enablePin = EN2_PIN,
         .pinHigh = IN3_PIN,
         .pinLow  = IN4_PIN,
         .polarity = 1,
-        .pinCfg = {
-            .mode = GPIO_MODE_OUTPUT,
-            .pin_bit_mask = (1 << IN3_PIN) | (1 << IN4_PIN),
-        }
+        .groupId = 0,
+        .pwmFreqHz = 25000,
+        .timerHz = 10000000
     };
-
-    gpio_config_t enable2Cfg = {
-        .mode = GPIO_MODE_OUTPUT,
-        .pin_bit_mask = (1 << EN2_PIN),
-    };
-    esp_err_t configGpio = gpio_config(&enable2Cfg);
-
-    if (configGpio == ESP_ERR_INVALID_ARG) {
-        LOG_E("Error when configuring GPIO");
-        return RESP_ERR;
-    }
-    gpio_set_level(EN2_PIN, HIGH);
 
     /* motorIF init*/
     mtrCtrlCtx->mtrs[MOTOR_2].motorIF = createMtrDriverIF_L293D(mtr2Cfg);
@@ -396,7 +390,7 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
     mtrCtrlCtx->mtrs[MOTOR_2].fb = mtrCtrlCtx->mtrs[MOTOR_1].fb;
 
 
-    /*===== END of Motor 1 Init =====*/
+    /*===== END of Motor 2 Init =====*/
     LOG_D("Completed Motor Init");
     // Add any other initialization calls here
     return sts;

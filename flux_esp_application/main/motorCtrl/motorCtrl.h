@@ -86,7 +86,8 @@ typedef struct motorCtx_s {
     /* Control Loop */
     mtrDriveMode_e  ctrlMode;
     float           position; //forward the feedback data into here
-    float           cmd;
+    uint32_t        cmd;
+    mtrDriveDir_e   dir;
     void (*ctrlLoop) (struct motorCtx_s *motor);
     void *ctrlParams;
 } motorCtx_t;

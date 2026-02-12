@@ -24,27 +24,8 @@ typedef enum {
     MTR_STOP,
     MTR_FORWARD,
     MTR_REVERSE,
+    MTR_COAST,
 } mtrDriveDir_e;
-
-typedef struct {
-    mtrDriverStatus_e   status;
-    bool                enabled;
-    uint16_t            debugFlag;
-    mtrCfg_t           *cfg;
-
-    /*
-        TODO: Use eventually to keep track of the running state of
-        the pins level. Use gpio_get_level().
-        For now, just update after we set the pins as long as they are
-        successful
-    */
-    int currPinHigh;
-    int currPinLow;
-
-    // Replace this with the specific encoder driver used
-    // as5600_cfg_t encoderCfg;
-} mtrState_t;
-
 typedef struct motorIF_s {
     // resp_t (*initDriver)  (struct motorIF_s *mtrDriver);
     resp_t (*enable)      (struct motorIF_s *mtrDriver);
@@ -52,7 +33,8 @@ typedef struct motorIF_s {
     resp_t (*getDrive)    (struct motorIF_s *mtrDriver);
     // resp_t (*getCurrent)  (struct motorIF_s *mtrDriver);
     resp_t (*getStatus)   (struct motorIF_s *mtrDriver);
-    resp_t (*setDrive)    (struct motorIF_s *mtrDriver, float targetPwm);
+    resp_t (*setDrive)    (struct motorIF_s *mtrDriver, uint32_t targetPwm);
+    resp_t (*setDir)      (struct motorIF_s *mtrDriver, mtrDriveDir_e dir);
     resp_t (*resetMotor)  (struct motorIF_s *mtrDriver);
 
     void *privCtx;

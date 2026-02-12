@@ -39,14 +39,24 @@
     <option value="2">Open</option>
   </select>
 
+  <select id="setSpeed" onchange="setSpeed()">
+    <option value="0">0</option>
+    <option value="50">50</option>
+    <option value="100">100</option>
+    <option value="150">150</option>
+    <option value="200">200</option>
+    <option value="400">400</option>
+    <option value="401">401</option>
+  </select>
+
   <select id="setMtrIdx" onchange="setMtrIdx()">
     <option value="0">MOTOR_1</option>
     <option value="1">MOTOR_2</option>
   </select>
 
-  <h2>Set Valve Position</h2>
+  <!-- <h2>Set Valve Position</h2>
   <input type="range" id="valveSlider" min="0" max="100" value="0" oninput="updateSliderValue(this.value)">
-  <div>Target: <span id="sliderVal">0</span>%</div>
+  <div>Target: <span id="sliderVal">0</span>%</div> -->
 
   <h2>Current Sensor Readings</h2>
   <div>Angle: <span id="angle">--</span>°</div>
@@ -67,10 +77,10 @@
         .catch(() => updateStatus("Failed to send command"));
     }
 
-    function updateSliderValue(val) {
-      document.getElementById('sliderVal').innerText = val;
-      fetch(`/setpct?val=${val}`).catch(() => updateStatus("Failed to set percent"));
-    }
+    // function updateSliderValue(val) {
+    //   document.getElementById('sliderVal').innerText = val;
+    //   fetch(`/setpct?val=${val}`).catch(() => updateStatus("Failed to set percent"));
+    // }
 
     function fetchSensorData() {
       fetch('/angle')
@@ -99,6 +109,13 @@
       fetch(`/mtrIdx?idx=${idx}`)
         .then(() => updateStatus(`Command: set motor Idx sent`))
         .catch(() => updateStatus("Failed to send set Motor Idx"));
+    }
+
+    function setSpeed() {
+      speed = document.getElementById('setSpeed').value;
+      fetch(`/mtrSpeed?speed=${speed}`)
+        .then(() => updateStatus(`Command: set motor Speed sent`))
+        .catch(() => updateStatus("Failed to send set Motor Speed"));
     }
 
     function selectMtr() {

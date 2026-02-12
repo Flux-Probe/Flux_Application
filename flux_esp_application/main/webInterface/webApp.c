@@ -12,6 +12,7 @@ esp_err_t handleAngle(httpd_req_t *req);
 esp_err_t handleMtrState(httpd_req_t *req);
 esp_err_t handleMtrMode(httpd_req_t *req);
 esp_err_t handleMtrIdx(httpd_req_t *req);
+esp_err_t handleMtrSpeed(httpd_req_t *req);
 // esp_err_t handleDebug(httpd_req_t *req);
 // esp_err_t handleTemp(httpd_req_t *req);
 esp_err_t handlePing(httpd_req_t *req);
@@ -33,11 +34,11 @@ httpd_uri_t methodUris[] = {
         .method = HTTP_GET,
         .handler = handleCmd
     },
-    {
-        .uri = "/setpct",
-        .method = HTTP_GET,
-        .handler = handleSetpct,
-    },
+    // {
+    //     .uri = "/setpct",
+    //     .method = HTTP_GET,
+    //     .handler = handleSetpct,
+    // },
     {
         .uri = "/angle",
         .method = HTTP_GET,
@@ -62,6 +63,11 @@ httpd_uri_t methodUris[] = {
         .uri = "/mtrIdx",
         .method = HTTP_GET,
         .handler = handleMtrIdx,
+    },
+    {
+        .uri = "/mtrSpeed",
+        .method = HTTP_GET,
+        .handler = handleMtrSpeed,
     },
     // {
     //     .uri = "/temp",
@@ -208,6 +214,28 @@ esp_err_t handleMtrIdx(httpd_req_t *req)
     }
     return httpd_resp_send(req, NULL, 0);  // 204
 }
+
+esp_err_t handleMtrSpeed(httpd_req_t *req)
+{
+    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
+    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
+
+    char param[MAX_URI_PARAM_LEN] = {0};
+    LOG_I("Calling set mtr Speed");
+    resp_t sts = handleGetUri(req, param, "speed");
+
+    if (sts == RESP_OK) {
+        // Cancel closed loop, learning, etc.
+        int setSpeed = atoi(param);
+        LOG_I("Setting mtrSpeed: %d", setSpeed);
+        sts = mtr->cmd = (uint32_t) setSpeed;
+    }
+    else {
+        LOG_E("Error when parsing URI: handleMtrState");
+    }
+    return httpd_resp_send(req, NULL, 0);  // 204
+}
+
 
 
 esp_err_t handleSetpct(httpd_req_t *req)
