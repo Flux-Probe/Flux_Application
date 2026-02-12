@@ -41,7 +41,7 @@ static resp_t readAS5600Raw(feedback_t *fb, float *rawVal)
 
     if (err != ESP_OK) {
         cfg->rawData = 0xFFFFFFFF; //Set finalized value to invalid. Prolly make a const
-        LOG_E("I2C read failed: %s", esp_err_to_name(err));
+        LOG_E("I2C read failed: %s|%d", esp_err_to_name(err), cfg->i2cPort);
         sts = RESP_ERR;
     }
     else {
@@ -126,6 +126,7 @@ feedback_t *as5600Init(as5600_cfg_t cfg)
     privCtx->writeData[1] = cfg.writeData[1];
     privCtx->readTimeout = cfg.readTimeout;
     privCtx->dbgFlag = cfg.dbgFlag;
+    privCtx->i2cPort = cfg.i2cCfg.masterCfg.i2c_port;
 
     resp_t resp = i2cConfigure(privCtx, cfg);
     LOG_W("I2C Cfg: %d,%d", privCtx->i2cCfg.masterCfg.i2c_port, privCtx->i2cCfg.devCfg.device_address);

@@ -225,7 +225,7 @@ void coastControlLoop(motorCtx_t *mtr)
     // mtrState->t_loop.t_start = esp_timer_get_time() / 1000;
     // LOG_I("%d,%d,%d", mtrState->enabled, mtrState->driveMode, mtrState->driveDir);
 
-    // sts = mtr->fb->readData(&mtr->fb, &mtr->position);
+    // sts = mtr->fb->readData(mtr->fb, &mtr->position);
 
     if (!mtr->enabled) {
         mtr->ctrlMode = MODE_OFF;
@@ -269,6 +269,14 @@ void motorControlTask(void *arg)
                 motor is updated.
             */
             ctx->mtrs[idx].position += 0.1;
+            resp_t sts = ctx->mtrs[idx].fb->readData(ctx->mtrs[idx].fb, &ctx->mtrs[idx].position);
+            if (sts != RESP_OK){
+                LOG_W("ERR reading data from IDX: %d", idx);
+            }
+            else {
+                LOG_W("READ SUCCESSFUL %d", idx);
+
+            }
             ctx->mtrs[idx].ctrlLoop(&ctx->mtrs[idx]);
         }
         LOG_W("Ctrl Loop: %d|%d|%d|%d|=====|%d|%d|%d|%d",
@@ -341,9 +349,9 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
 
     /*Feedback init*/
     as5600_cfg_t mtr1FbCfg;
-    mtr1FbCfg.i2cCfg.masterCfg.i2c_port    = I2C_PORT;
-    mtr1FbCfg.i2cCfg.masterCfg.sda_io_num  = SDA_PIN;
-    mtr1FbCfg.i2cCfg.masterCfg.scl_io_num  = SCL_PIN;
+    mtr1FbCfg.i2cCfg.masterCfg.i2c_port    = I2C_NUM_0;
+    mtr1FbCfg.i2cCfg.masterCfg.sda_io_num  = SDA_1_PIN;
+    mtr1FbCfg.i2cCfg.masterCfg.scl_io_num  = SCL_1_PIN;
     mtr1FbCfg.i2cCfg.masterCfg.clk_source  = I2C_CLK_SRC_DEFAULT;
 
     mtr1FbCfg.i2cCfg.devCfg.dev_addr_length    = I2C_ADDR_BIT_LEN_7;
@@ -389,6 +397,23 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
 
     mtrCtrlCtx->mtrs[MOTOR_2].fb = mtrCtrlCtx->mtrs[MOTOR_1].fb;
 
+    /* Feedback init*/
+    as5600_cfg_t mtr2FbCfg;
+    mtr2FbCfg.i2cCfg.masterCfg.i2c_port    = I2C_NUM_1;
+    mtr2FbCfg.i2cCfg.masterCfg.sda_io_num  = SDA_2_PIN;
+    mtr2FbCfg.i2cCfg.masterCfg.scl_io_num  = SCL_2_PIN;
+    mtr2FbCfg.i2cCfg.masterCfg.clk_source  = I2C_CLK_SRC_DEFAULT;
+
+    mtr2FbCfg.i2cCfg.devCfg.dev_addr_length    = I2C_ADDR_BIT_LEN_7;
+    mtr2FbCfg.i2cCfg.devCfg.device_address     = AS5600_ADDR;
+    mtr2FbCfg.i2cCfg.devCfg.scl_speed_hz       = I2C_CLK_SPD;
+
+    mtr2FbCfg.readTimeout  = I2C_READ_TIMEOUT / portTICK_PERIOD_MS;
+    mtr2FbCfg.writeData[0] = ANGLE_MSB;
+    mtr2FbCfg.writeData[1] = ANGLE_MSB >> 8;
+
+    mtrCtrlCtx->mtrs[MOTOR_2].fb = as5600Init(mtr2FbCfg);
+    CHECK_PTR_RET_ERR(mtrCtrlCtx->mtrs[MOTOR_2].fb, "Error when initializing Feedback for mtr 2");
 
     /*===== END of Motor 2 Init =====*/
     LOG_D("Completed Motor Init");
