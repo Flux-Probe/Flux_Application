@@ -19,33 +19,14 @@
 struct ble_hs_cfg;
 struct ble_gatt_register_ctxt;
 
-/*Data buffers*/
-extern float current_temp; // Celsius
-extern float target_temp; // Celsius
-extern float motor_current; //Amps
-extern int motor_pos; //Position/Angle in degrees
-
 typedef enum {
-    CURR_TEMP_CHR,
-    TARGET_TEMP_CHR,
-    MTR_CURRENT_CHR,
-    MTR_POS_CHR,
-
+    COMMAND_CHR,
+    RECIPE_WRITE_CHR,
+    NOTIFICATION_CHR,
     MAX_CHR_CNT,
 } charIdx_e;
 
-typedef enum {
-    CHR_FLOAT,
-    CHR_INT32,
-    CHR_UINT32,
-} charValType_e;
-
 typedef struct {
-    union {
-        float           value_f;
-        int32_t         value_i;
-    };
-    charValType_e       type;
     uint16_t           *handle;
     uint16_t            conn_handle;
     bool                handle_init;

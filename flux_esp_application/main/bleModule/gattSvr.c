@@ -9,13 +9,22 @@
 #include <string.h>
 #include "host/ble_hs.h"
 #include "fluxBleService.h"
+#include "blePacketHandler.h"
 #include "services/ans/ble_svc_ans.h"
 
 /*** Maximum number of characteristics with the notify flag ***/
 #define TAG "GATT_SVR"
 #define NUM_SVCS 2
+/* CHARS coming from application are in multiple packets. Use static buffers to
+   read then process later
+*/
+#define RX_BUF_SIZE 4096
+#define TX_BUF_SIZE 512
 
-/*Data buffers*/
+static uint8_t  rx_buf[RX_BUF_SIZE];
+static uint16_t rx_len = 0;
+static uint8_t  tx_buf[TX_BUF_SIZE];
+static uint16_t tx_len = 0;
 
 static int gattSvcAccess(uint16_t conn_handle, uint16_t attr_handle,
                          struct ble_gatt_access_ctxt *ctxt, void *arg);
@@ -24,60 +33,42 @@ uint16_t handles[MAX_CHR_CNT];
 bleSvc_t *fluxBleSvc;
 
 const uint16_t flags[MAX_CHR_CNT] = {
-    [CURR_TEMP_CHR] = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-    [TARGET_TEMP_CHR] = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
-    [MTR_CURRENT_CHR] = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-    [MTR_POS_CHR] = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
+    [COMMAND_CHR] = BLE_GATT_CHR_F_WRITE,
+    [RECIPE_WRITE_CHR] = BLE_GATT_CHR_F_WRITE,
+    [NOTIFICATION_CHR] = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
 };
 
 bleSvc_t dfltFluxBleSvc = {
     .svcUuid = BLE_UUID128_INIT(
-        0xA0,0x00,0x00,0x00,
-        0xA1,0xA1,0xA1,0xA1,
-        0xB1,0xB1,0xB1,0xB1,
-        0xC1,0xC1,0xC1,0xC1
+        0xFB,0x34,0x9B,0x5f,
+        0x80,0x00,0x00,0x80,
+        0x00,0x10,0x00,0x00,
+        0xE0,0xFF,0x00,0x00,
     ),
     .chars = {
-        [CURR_TEMP_CHR] = {
+        [COMMAND_CHR] = {
             .uuid = BLE_UUID128_INIT(
-                        0xA1,0x00,0x00,0x00,
-                        0xA1,0xA1,0xA1,0xA1,
-                        0xB1,0xB1,0xB1,0xB1,
-                        0xC1,0xC1,0xC1,0xC1
-                    ),
-            .value_f = 0,
-            .type = CHR_FLOAT,
+                0xFB,0x34,0x9B,0x5f,
+                0x80,0x00,0x00,0x80,
+                0x00,0x10,0x00,0x00,
+                0xE1,0xFF,0x00,0x00,
+            ),
         },
-        [TARGET_TEMP_CHR] = {
+        [RECIPE_WRITE_CHR] = {
             .uuid = BLE_UUID128_INIT(
-                        0xA2,0x00,0x00,0x00,
-                        0xA1,0xA1,0xA1,0xA1,
-                        0xB1,0xB1,0xB1,0xB1,
-                        0xC1,0xC1,0xC1,0xC1
-                    ),
-            .value_f = 0,
-            .type = CHR_FLOAT,
+                0xFB,0x34,0x9B,0x5f,
+                0x80,0x00,0x00,0x80,
+                0x00,0x10,0x00,0x00,
+                0xE2,0xFF,0x00,0x00,
+            ),
         },
-        [MTR_CURRENT_CHR] = {
+        [NOTIFICATION_CHR] = {
             .uuid = BLE_UUID128_INIT(
-                        0xA3,0x00,0x00,0x00,
-                        0xA1,0xA1,0xA1,0xA1,
-                        0xB1,0xB1,0xB1,0xB1,
-                        0xC1,0xC1,0xC1,0xC1
-                    ),
-            .value_f = 0,
-            .type = CHR_FLOAT,
-        },
-        // Assuming this is encoder position right now
-        [MTR_POS_CHR] = {
-            .uuid = BLE_UUID128_INIT(
-                        0xA4,0x00,0x00,0x00,
-                        0xA1,0xA1,0xA1,0xA1,
-                        0xB1,0xB1,0xB1,0xB1,
-                        0xC1,0xC1,0xC1,0xC1
-                    ),
-            .value_i = 0,
-            .type = CHR_INT32,
+                0xFB,0x34,0x9B,0x5f,
+                0x80,0x00,0x00,0x80,
+                0x00,0x10,0x00,0x00,
+                0xE3,0xFF,0x00,0x00,
+            ),
         }
     }
 };
@@ -93,28 +84,22 @@ struct ble_gatt_svc_def flux_svr_svcs[NUM_SVCS] = {
         .characteristics = (struct ble_gatt_chr_def[])
         {
             {
-                .uuid = &dfltFluxBleSvc.chars[CURR_TEMP_CHR].uuid.u,
+                .uuid = &dfltFluxBleSvc.chars[COMMAND_CHR].uuid.u,
                 .access_cb = gattSvcAccess,
-                .val_handle = &handles[CURR_TEMP_CHR],
-                .flags = flags[CURR_TEMP_CHR],
+                .val_handle = &handles[COMMAND_CHR],
+                .flags = flags[COMMAND_CHR],
             },
             {
-                .uuid = &dfltFluxBleSvc.chars[TARGET_TEMP_CHR].uuid.u,
+                .uuid = &dfltFluxBleSvc.chars[RECIPE_WRITE_CHR].uuid.u,
                 .access_cb = gattSvcAccess,
-                .val_handle = &handles[TARGET_TEMP_CHR],
-                .flags = flags[TARGET_TEMP_CHR],
+                .val_handle = &handles[RECIPE_WRITE_CHR],
+                .flags = flags[RECIPE_WRITE_CHR],
             },
             {
-                .uuid = &dfltFluxBleSvc.chars[MTR_CURRENT_CHR].uuid.u,
+                .uuid = &dfltFluxBleSvc.chars[NOTIFICATION_CHR].uuid.u,
                 .access_cb = gattSvcAccess,
-                .val_handle = &handles[MTR_CURRENT_CHR],
-                .flags = flags[MTR_CURRENT_CHR],
-            },
-            {
-                .uuid = &dfltFluxBleSvc.chars[MTR_POS_CHR].uuid.u,
-                .access_cb = gattSvcAccess,
-                .val_handle = &handles[MTR_POS_CHR],
-                .flags = flags[MTR_POS_CHR],
+                .val_handle = &handles[NOTIFICATION_CHR],
+                .flags = flags[NOTIFICATION_CHR],
             },
             {0}, // End of characteristics
         },
@@ -179,7 +164,7 @@ static int gattSvcAccess(uint16_t conn_handle, uint16_t attr_handle,
     */
     const ble_uuid_t *uuid = ctxt->chr->uuid;
     int chrIdx;
-    for (chrIdx = CURR_TEMP_CHR; chrIdx < MAX_CHR_CNT; chrIdx++) {
+    for (chrIdx = COMMAND_CHR; chrIdx < MAX_CHR_CNT; chrIdx++) {
         if (ble_uuid_cmp(uuid, &fluxBleSvc->chars[chrIdx].uuid.u) == 0) {
             break;
         }
@@ -192,38 +177,14 @@ static int gattSvcAccess(uint16_t conn_handle, uint16_t attr_handle,
 
     switch (ctxt->op) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
-        if (fluxBleSvc->chars[chrIdx].type == CHR_FLOAT) {
-            rc = os_mbuf_append(ctxt->om, &fluxBleSvc->chars[chrIdx].value_f,
-                                sizeof(fluxBleSvc->chars[chrIdx].value_f));
-        }
-        else {
-            rc = os_mbuf_append(ctxt->om, &fluxBleSvc->chars[chrIdx].value_i,
-                                sizeof(fluxBleSvc->chars[chrIdx].value_i));
-        }
+        rc = os_mbuf_append(ctxt->om, tx_buf, tx_len);
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
-        /* Sending Float value needs:
-            * - 32 bits, LITTLE endian order
-            * - 1 Bit = Sign (0 for positive)
-            * - 8 Bits = Exponent
-            * - 23 Bits = Mantissa
-            * Byte Order: Mantissa - Exponent - Sign
-            * EX:  Dec: 25.5
-            *      Binary: 10011000000000000000000 - 10000011 - 0
-            *      Hex: 00 00 CC 41
-        */
-        if (fluxBleSvc->chars[chrIdx].type == CHR_FLOAT) {
-            rc = gattSvrWrite(ctxt->om,
-                              sizeof(fluxBleSvc->chars[chrIdx].value_f),
-                              sizeof(fluxBleSvc->chars[chrIdx].value_f),
-                              &fluxBleSvc->chars[chrIdx].value_f, NULL);
-        }
-        else {
-            rc = gattSvrWrite(ctxt->om,
-                              sizeof(fluxBleSvc->chars[chrIdx].value_i),
-                              sizeof(fluxBleSvc->chars[chrIdx].value_i),
-                              &fluxBleSvc->chars[chrIdx].value_f, NULL);
+        rc = gattSvrWrite(ctxt->om, 1, RX_BUF_SIZE, rx_buf, &rx_len);
+        if (rc == 0) {
+            LOG_I("Len: %d", rx_len);
+            blePacketHandler_onWrite(chrIdx, rx_buf, rx_len);
         }
         return rc;
     default:
@@ -279,7 +240,7 @@ void gattSvrSubscribeCb(struct ble_gap_event *event)
     }
 
     int chrIdx;
-    for (chrIdx = CURR_TEMP_CHR; chrIdx < MAX_CHR_CNT; chrIdx++) {
+    for (chrIdx = COMMAND_CHR; chrIdx < MAX_CHR_CNT; chrIdx++) {
         if (event->subscribe.attr_handle == *fluxBleSvc->chars[chrIdx].handle) {
             break;
         }
@@ -316,10 +277,9 @@ void notifyCharUpdate(characteristics_t chr)
 void loadDefaults(bleSvc_t *bleSvc)
 {
     memcpy(bleSvc, &dfltFluxBleSvc, sizeof(bleSvc_t));
-    bleSvc->chars[CURR_TEMP_CHR].handle =   &handles[CURR_TEMP_CHR];
-    bleSvc->chars[TARGET_TEMP_CHR].handle = &handles[TARGET_TEMP_CHR];
-    bleSvc->chars[MTR_CURRENT_CHR].handle = &handles[MTR_CURRENT_CHR];
-    bleSvc->chars[MTR_POS_CHR].handle =     &handles[MTR_POS_CHR];
+    bleSvc->chars[COMMAND_CHR].handle      = &handles[COMMAND_CHR];
+    bleSvc->chars[RECIPE_WRITE_CHR].handle = &handles[RECIPE_WRITE_CHR];
+    bleSvc->chars[NOTIFICATION_CHR].handle = &handles[NOTIFICATION_CHR];
     fluxBleSvc = bleSvc;
 }
 
@@ -327,7 +287,6 @@ int configGatts(bleSvc_t *bleSvc)
 {
     loadDefaults(bleSvc);
 
-    LOG_W("Starting Val: %d", bleSvc->chars[MTR_POS_CHR].value_i);
     int resp = ble_gatts_count_cfg(flux_svr_svcs);
     if (resp != 0) {
         LOG_E("Error updating GATT service counter");

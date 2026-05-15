@@ -1,6 +1,7 @@
 set(srcs "main.c"
          "bleModule/gattSvr.c"
          "bleModule/fluxBleService.c"
+         "bleModule/blePacketHandler.c"
          "motorCtrl/motorCtrl.c"
          "motorDrivers/motorDriver_L293D.c"
          "feedback/as5600.c"
@@ -20,7 +21,7 @@ set(dirs "."
 set(requires driver esp_timer esp_wifi esp_driver_mcpwm
              esp_https_server)
 
-set(privReq bt nvs_flash)
+set(privReq bt nvs_flash mbedtls json)
 
 set(embedFiles "webInterface/index.html")
 
