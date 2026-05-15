@@ -65,4 +65,24 @@ typedef struct {
     int                    stepCount;
 } recipe_load_t;
 
+// ── ESP → App ──────────────────────────────────────────────────────────────
+
+typedef enum {
+    PROBE_STATUS_OK,
+    PROBE_STATUS_OPEN,
+    PROBE_STATUS_SHORT,
+} probe_status_e;
+
+typedef struct {
+    int            probeIndex;
+    float          tempC;
+    probe_status_e status;
+} notify_probe_t;
+
+typedef struct {
+    int valveIndex;
+    int currentPosition;
+    int targetPosition;
+} notify_valve_t;
+
 #endif

@@ -55,5 +55,6 @@ void gattSvrSubscribeCb(struct ble_gap_event *event);
 void notifyCharUpdate(characteristics_t chr);
 int  gatt_svr_init(bleSvc_t *bleSvc);
 void start_ble_service(bleSvc_t *bleSvc);
+int  bleNotify_send(const char *json);
 
 #endif

@@ -259,6 +259,11 @@ void gattSvrSubscribeCb(struct ble_gap_event *event)
           fluxBleSvc->chars[chrIdx].handle_sts);
 }
 
+/* When sending a notification, Call bleNotify_send with the data in JSON format
+   to send. This will copy into a buffer and call ble_gatts_notify with the appropriate
+   handle. This then calls gattSvcAccess as a read event which then sends out the data
+   within tx_buf.
+   */
 void notifyCharUpdate(characteristics_t chr)
 {
     int rc =  0;
@@ -268,6 +273,20 @@ void notifyCharUpdate(characteristics_t chr)
             LOG_I("Notify Err: %d", rc);
         }
     }
+}
+
+int bleNotify_send(const char *json)
+{
+    if (!fluxBleSvc) return -1;
+    int jlen = (int)strlen(json);
+    if (jlen >= TX_BUF_SIZE) {
+        LOG_E("Notification too large: %d bytes", jlen);
+        return -1;
+    }
+    memcpy(tx_buf, json, jlen);
+    tx_len = (uint16_t)jlen;
+    notifyCharUpdate(fluxBleSvc->chars[NOTIFICATION_CHR]);
+    return 0;
 }
 
 /*
