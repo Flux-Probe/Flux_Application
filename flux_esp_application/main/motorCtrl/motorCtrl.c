@@ -7,6 +7,7 @@
 
 #include "motorDriver_L293D.h"
 #include "as5600.h"
+#include "dummyFb.h"
 
 // Needed for Logging module name
 #define TAG "MotorCtrl"
@@ -329,7 +330,11 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
     mtr1FbCfg.writeData[0] = ANGLE_MSB;
     mtr1FbCfg.writeData[1] = ANGLE_MSB >> 8;
 
+#if defined(USE_DUMMY_FB)
+    mtrCtrlCtx->mtrs[MOTOR_1].fb = dummyFbInit(1000);
+#else
     mtrCtrlCtx->mtrs[MOTOR_1].fb = as5600Init(mtr1FbCfg);
+#endif
     CHECK_PTR_RET_ERR(mtrCtrlCtx->mtrs[MOTOR_1].fb, "Error when initializing Feedback for mtr 1");
 
     mtrCtrlCtx->mtrs[MOTOR_1].enabled = false;
@@ -362,8 +367,6 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
     mtrCtrlCtx->mtrs[MOTOR_2].mtrState = STATE_OPERATIONAL;
     mtrCtrlCtx->mtrs[MOTOR_2].ctrlLoop = coastControlLoop;
 
-    mtrCtrlCtx->mtrs[MOTOR_2].fb = mtrCtrlCtx->mtrs[MOTOR_1].fb;
-
     /* Feedback init*/
     as5600_cfg_t mtr2FbCfg;
     mtr2FbCfg.i2cCfg.masterCfg.i2c_port    = I2C_NUM_1;
@@ -379,7 +382,11 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
     mtr2FbCfg.writeData[0] = ANGLE_MSB;
     mtr2FbCfg.writeData[1] = ANGLE_MSB >> 8;
 
+#if defined(USE_DUMMY_FB)
+    mtrCtrlCtx->mtrs[MOTOR_2].fb = dummyFbInit(1000);
+#else
     mtrCtrlCtx->mtrs[MOTOR_2].fb = as5600Init(mtr2FbCfg);
+#endif
     CHECK_PTR_RET_ERR(mtrCtrlCtx->mtrs[MOTOR_2].fb, "Error when initializing Feedback for mtr 2");
 
     /*===== END of Motor 2 Init =====*/
