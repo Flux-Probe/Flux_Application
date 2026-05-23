@@ -1,0 +1,192 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg:      #0f0f1a;
+    --surf:    #1a1a2e;
+    --surf2:   #16213e;
+    --accent:  #0f3460;
+    --green:   #4ade80;
+    --red:     #f87171;
+    --amber:   #fbbf24;
+    --blue:    #60a5fa;
+    --text:    #e2e8f0;
+    --muted:   #94a3b8;
+    --border:  #2d3748;
+    --divider: #1e2535;
+}
+
+body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 16px 16px 72px;
+}
+
+/* ── Header ── */
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--surf);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+header h1 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--blue);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.conn-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: var(--muted);
+}
+
+.conn-dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--red);
+    box-shadow: 0 0 6px var(--red);
+    transition: background 0.3s, box-shadow 0.3s;
+}
+.conn-dot.ok {
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+}
+
+/* ── Grid ── */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 14px;
+}
+
+/* ── Card ── */
+.card {
+    background: var(--surf);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+
+.card-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.8px;
+    color: var(--blue);
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* ── Monitor rows ── */
+.field-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--divider);
+    font-size: 0.86rem;
+}
+.field-row:last-child { border-bottom: none; }
+
+.field-key {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.field-val {
+    font-family: monospace;
+    font-weight: 600;
+    color: var(--text);
+    text-align: right;
+}
+.field-val.bool-true  { color: var(--green); }
+.field-val.bool-false { color: var(--red);   }
+.field-val.numeric    { color: var(--amber);  }
+
+/* ── Controls ── */
+.ctrl-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.ctrl-item { display: flex; flex-direction: column; gap: 5px; }
+
+.ctrl-item label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+
+select, input[type="number"], input[type="text"] {
+    background: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 6px 8px;
+    font-size: 0.84rem;
+    width: 100%;
+}
+select:focus, input:focus {
+    outline: 1px solid var(--blue);
+    outline-offset: 1px;
+}
+
+button {
+    background: var(--blue);
+    border: none;
+    border-radius: 6px;
+    color: #0f0f1a;
+    font-weight: 700;
+    font-size: 0.82rem;
+    padding: 7px 10px;
+    cursor: pointer;
+    transition: opacity 0.12s;
+    white-space: nowrap;
+}
+button:hover  { opacity: 0.82; }
+button:active { opacity: 0.65; }
+
+.toggle-btn { width: 100%; padding: 7px 4px; }
+.toggle-btn.enabled  { background: var(--green); }
+.toggle-btn.disabled { background: var(--red);   }
+
+/* Speed row */
+.speed-row { display: flex; gap: 5px; align-items: stretch; }
+.speed-row input { flex: 1; min-width: 0; }
+
+/* ── Raw command ── */
+.raw-row { display: flex; gap: 8px; margin-top: 8px; }
+.raw-row input[id="rawKey"] { flex: 2; }
+.raw-row input[id="rawVal"] { flex: 1; }
+
+/* ── Status bar ── */
+#statusBar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--surf2);
+    border-top: 1px solid var(--border);
+    padding: 7px 20px;
+    font-size: 0.76rem;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+#cmdStatus { color: var(--amber); min-width: 0; text-align: right; }

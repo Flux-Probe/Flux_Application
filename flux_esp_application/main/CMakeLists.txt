@@ -9,6 +9,7 @@ set(srcs "main.c"
          "feedback/dummyFb.c"
          "webInterface/wifiSetup.c"
          "webInterface/webApp.c"
+         "webInterface/mtrWebBindings.c"
          )
 
 set(dirs "."
@@ -25,7 +26,8 @@ set(requires driver esp_timer esp_wifi esp_driver_mcpwm
 
 set(privReq bt nvs_flash mbedtls json)
 
-set(embedFiles "webInterface/index.html")
+set(embedFiles "webInterface/index.html"
+               "webInterface/style.css")
 
 idf_component_register(SRCS "${srcs}"
                        INCLUDE_DIRS "${dirs}"

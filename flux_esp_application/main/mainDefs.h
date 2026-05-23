@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "loggingDefs.h"
+#include "configEnv.h"
 
 typedef enum {
     RESP_ERR = -1,

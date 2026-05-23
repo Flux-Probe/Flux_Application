@@ -110,7 +110,7 @@ void setDrivePwm(motorCtx_t *motor, int32_t setDrive);
 // float percentOpen(float angle);
 // void setTargetPercent(mtrState_t *mtrState, float target);
 
-int motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx);
+resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx);
 
 
 #endif

@@ -396,7 +396,8 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
 };
 
 
-int motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx) {
+resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx)
+{
     CHECK_PTR_RET_ERR(mtrCtrlCtx);
     esp_log_level_set(TAG, ESP_LOG_DEBUG); // Setting debug
 
@@ -408,5 +409,5 @@ int motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx) {
 
     // Create task for control.
     xTaskCreate(motorControlTask, "motor_ctrl", 4096, mtrCtrlCtx, 10, NULL);
-    return 1;
+    return RESP_OK;
 }
