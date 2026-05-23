@@ -1,5 +1,5 @@
 .vscode/
-*/configEnv.h
+configEnv.h
 
 # ESP-IDF build output
 */build/

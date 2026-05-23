@@ -6,6 +6,7 @@ set(srcs "main.c"
          "motorCtrl/motorCtrl.c"
          "motorDrivers/motorDriver_L293D.c"
          "feedback/as5600.c"
+         "feedback/dummyFb.c"
          "webInterface/wifiSetup.c"
          "webInterface/webApp.c"
          )
