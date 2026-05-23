@@ -10,6 +10,7 @@
 #include "wifiSetup.h"
 #include "fluxBleService.h"
 #include "webApp.h"
+#include "mtrWebBindings.h"
 #include "mainDefs.h"
 #include "nvs_flash.h"
 
@@ -21,7 +22,7 @@ static int logLvl = ESP_LOG_DEBUG;
 
 typedef struct {
     motorCtrlCtx_t  motorCtrl;
-    webapp_t        webApp;
+    webApp_t        webApp;
     wifiConn_t      wifi;
     bleSvc_t        bleSvc;
 } espIf_t;
@@ -98,7 +99,6 @@ void testTask(void *arg)
 
 void app_main(void)
 {
-
     resp_t sts = RESP_OK;
     esp_log_level_set(TAG, logLvl); // Setting debug
     sts = initFlash();
@@ -107,19 +107,19 @@ void app_main(void)
     start_ble_service(&espIF.bleSvc);
 
     LOG_I("Starting MotorCtrl");
-    int resp = motorCtrlInit(&espIF.motorCtrl);
-    LOG_D("Done MotorCtrl init %d", resp);
+    sts = motorCtrlInit(&espIF.motorCtrl);
+    RETURN_IF_ERR_LOG(sts, "Done MotorCtrl init %d", sts);
 
-    /*
-     * TODO: Add config parameters for WIFI to connect to
-     * Call the following only Once
-    */
     sts = wifi_conn_init(&espIF.wifi);
     RETURN_IF_ERR_LOG(sts, "Error with Wifi init");
 
-    start_http_server(&espIF.webApp, &espIF.motorCtrl);
+    sts = startHttpServer(&espIF.webApp);
+    RETURN_IF_ERR_LOG(sts, "Error when starting webApp");
 
+    motorCtrlRegisterWebBindings(&espIF.webApp, &espIF.motorCtrl);
+
+#ifdef DEBUG
     xTaskCreate(testTask, "testTask", 4096, &espIF, 10, NULL);
-
+#endif
 
 }

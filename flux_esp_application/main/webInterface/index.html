@@ -1,134 +1,261 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ESP32 Dashboard</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      text-align: center;
-      max-width: 600px;
-      margin: 40px auto;
-    }
-    h1 { color: #333; }
-    button, input[type=range] {
-      padding: 10px;
-      margin: 10px;
-      font-size: 16px;
-    }
-    #status {
-      font-size: 14px;
-      color: #666;
-      margin-top: 10px;
-    }
-  </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Flux Dashboard</title>
+    <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
 
-  <h1>ESP32 Control Panel</h1>
+<header>
+    <h1>Flux Dashboard</h1>
+    <div class="conn-badge">
+        <div class="conn-dot" id="connDot"></div>
+        <span id="connLabel">Disconnected</span>
+    </div>
+</header>
 
-  <h2>Motor Control</h2>
+<div class="grid" id="monitorGrid"></div>
 
-  <select id="setMtrMode" onchange="setMotorMode()">
-    <option value="0">Off</option>
-    <option value="1">Pos</option>
-    <option value="2">Open</option>
-  </select>
+<br>
 
-  <select id="setSpeed" onchange="setSpeed()">
-    <option value="0">0</option>
-    <option value="-400">-400</option>
-    <option value="-200">-200</option>
-    <option value="-150">-150</option>
-    <option value="-100">-100</option>
-    <option value="-50">-50</option>
-    <option value="50">50</option>
-    <option value="100">100</option>
-    <option value="150">150</option>
-    <option value="200">200</option>
-    <option value="400">400</option>
-    <option value="401">401</option>
-  </select>
+<div class="card" id="rawCmdCard" style="display:none">
+    <div class="card-title">Raw Command</div>
+    <div class="raw-row">
+        <input type="text" id="rawKey" placeholder="key (e.g. mtr0.speed)" />
+        <input type="text" id="rawVal" placeholder="value" />
+        <button onclick="sendRaw()">Send</button>
+    </div>
+</div>
 
-  <select id="setMtrIdx" onchange="setMtrIdx()">
-    <option value="0">MOTOR_1</option>
-    <option value="1">MOTOR_2</option>
-  </select>
+<div id="statusBar">
+    <span id="lastUpdate">Waiting for data…</span>
+    <span id="cmdStatus"></span>
+</div>
 
-  <!-- <h2>Set Valve Position</h2>
-  <input type="range" id="valveSlider" min="0" max="100" value="0" oninput="updateSliderValue(this.value)">
-  <div>Target: <span id="sliderVal">0</span>%</div> -->
+<script>
+    const POLL_MS    = 200;
+    const MODE_NAMES = { 0: 'Off', 1: 'Pos', 2: 'Open' };
 
-  <h2>Current Sensor Readings</h2>
-  <div>Angle: <span id="angle">--</span>°</div>
-  <!-- <div>Percent Open: <span id="pct">--</span>%</div> -->
-  <div>Cmd: <span id="tgt">--</span>°</div>
-  <div>Drive Dir: <span id="dir">--</span></div>
-  <div>Drive Mode: <span id="mtrMode">--</span></div>
-  <div>Target Idx: <span id="tgtIdx">--</span></div>
-  <div>Motor Enabled?: <span id="mtrEnable">--</span></div>
+    let initialized = false;
 
-  <div id="status">Connecting...</div>
+    // ── API helpers ──────────────────────────────────────────────────────────────
 
-  <input type="checkbox" onchange="selectMtr(this)" id="mtrStatus">Motor on?</button>
-
-  <script>
-
-    function fetchSensorData() {
-      fetch('/getData')
-        .then(res => res.text())
-        .then(data => {
-              const [angle, tgt, mtrSt, mtrMode, idx, dir] = data.split(',');
-              document.getElementById('angle').innerText = angle;
-              // document.getElementById('pct').innerText = pct;
-              document.getElementById('tgt').innerText = tgt;
-              document.getElementById('dir').innerText = dir;
-              document.getElementById('mtrSt').checked = mtrSt;
-              document.getElementById('mtrMode').innerText = mtrMode;
-              document.getElementById('tgtIdx').innerText = idx;
-        });
+    async function sendSet(key, val) {
+        try {
+            const r = await fetch(`/set?key=${encodeURIComponent(key)}&val=${encodeURIComponent(val)}`);
+            const j = await r.json();
+            showCmd(j.ok
+                ? `✓  ${key} = ${val}`
+                : `✗  ${j.error || 'error'}`,
+                j.ok ? '#4ade80' : '#f87171');
+        } catch {
+            showCmd(`✗  ${key}: network error`, '#f87171');
+        }
     }
 
-    function setMotorMode() {
-      mode = document.getElementById('setMtrMode').value;
-      fetch(`/mtrMode?mode=${mode}`)
-        .then(() => updateStatus(`Command: set motor mode sent`))
-        .catch(() => updateStatus("Failed to send set Motor mode"));
+    function showCmd(msg, color) {
+        const el = document.getElementById('cmdStatus');
+        el.textContent = msg;
+        el.style.color = color || '#fbbf24';
+        clearTimeout(el._t);
+        el._t = setTimeout(() => el.textContent = '', 4000);
     }
 
-    function setMtrIdx() {
-      idx = document.getElementById('setMtrIdx').value;
-      fetch(`/mtrIdx?idx=${idx}`)
-        .then(() => updateStatus(`Command: set motor Idx sent`))
-        .catch(() => updateStatus("Failed to send set Motor Idx"));
+    // ── Data grouping ────────────────────────────────────────────────────────────
+
+    function groupByPrefix(data) {
+        const groups = {};
+        for (const key of Object.keys(data)) {
+            const dot    = key.indexOf('.');
+            const prefix = dot >= 0 ? key.slice(0, dot) : key;
+            (groups[prefix] = groups[prefix] || {})[key] = data[key];
+        }
+        return groups;
     }
 
-    function setSpeed() {
-      speed = document.getElementById('setSpeed').value;
-      fetch(`/mtrSpeed?speed=${speed}`)
-        .then(() => updateStatus(`Command: set motor Speed sent`))
-        .catch(() => updateStatus("Failed to send set Motor Speed"));
+    // ── Value formatting ─────────────────────────────────────────────────────────
+
+    function fmtVal(key, raw) {
+        if (raw === 'true'  || raw === true)  return { text: 'true',  cls: 'bool-true'  };
+        if (raw === 'false' || raw === false) return { text: 'false', cls: 'bool-false' };
+        if (key.endsWith('.mode')) {
+            const n = parseInt(raw);
+            return { text: `${raw}  (${MODE_NAMES[n] ?? '?'})`, cls: 'numeric' };
+        }
+        const n = Number(raw);
+        if (!Number.isNaN(n)) return { text: String(raw), cls: 'numeric' };
+        return { text: String(raw), cls: '' };
     }
 
-    function selectMtr() {
-      var checkBox = document.getElementById("mtrStatus");
-      enable = 0;
-      if (checkBox.checked == true){
-        enable = 1;
-      }
-      fetch(`/mtrEnable?state=${enable}`)
-        .then(() => updateStatus(`Mtr State: ${enable}`))
-        .catch(() => updateStatus("Failed to send Mtr State"));
+    // ── DOM building ─────────────────────────────────────────────────────────────
 
+    function makeMonitorCard(prefix, fields) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `<div class="card-title">${prefix} &mdash; Monitor</div>`;
+
+        for (const [key, val] of Object.entries(fields)) {
+            const sub = key.slice(prefix.length + 1) || key;
+            const fv  = fmtVal(key, val);
+            const row = document.createElement('div');
+            row.className = 'field-row';
+            row.innerHTML = `
+                <span class="field-key">.${sub}</span>
+                <span class="field-val ${fv.cls}" id="fv_${key.replace(/\./g,'_')}">${fv.text}</span>`;
+            card.appendChild(row);
+        }
+        return card;
     }
 
-    function updateStatus(msg) {
-      document.getElementById('status').innerText = msg;
+    function makeControlCard(prefix) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+            <div class="card-title">${prefix} &mdash; Controls</div>
+            <div class="ctrl-grid">
+
+                <div class="ctrl-item">
+                    <label>Enable</label>
+                    <button class="toggle-btn disabled"
+                            id="btn_en_${prefix}"
+                            data-enabled="0"
+                            onclick="toggleEnable('${prefix}')">OFF</button>
+                </div>
+
+                <div class="ctrl-item">
+                    <label>Mode</label>
+                    <select id="sel_mode_${prefix}" onchange="sendMode('${prefix}')">
+                        <option value="0">Off</option>
+                        <option value="1">Pos</option>
+                        <option value="2">Open</option>
+                    </select>
+                </div>
+
+                <div class="ctrl-item">
+                    <label>Speed</label>
+                    <div class="speed-row">
+                        <input type="number" id="inp_spd_${prefix}" value="0" step="50" />
+                        <button onclick="sendSpeed('${prefix}')">Set</button>
+                    </div>
+                </div>
+
+            </div>`;
+        return card;
     }
 
-    setInterval(fetchSensorData, 100);
-  </script>
+    function buildUI(groups) {
+        const grid = document.getElementById('monitorGrid');
+        grid.innerHTML = '';
 
+        for (const [prefix, fields] of Object.entries(groups)) {
+            grid.appendChild(makeMonitorCard(prefix, fields));
+            if (/^mtr\d+$/.test(prefix)) {
+                grid.appendChild(makeControlCard(prefix));
+            }
+        }
+
+        document.getElementById('rawCmdCard').style.display = '';
+    }
+
+    // ── Live value sync ──────────────────────────────────────────────────────────
+
+    function syncValues(data) {
+        for (const [key, val] of Object.entries(data)) {
+            const el = document.getElementById('fv_' + key.replace(/\./g, '_'));
+            if (!el) continue;
+            const fv = fmtVal(key, val);
+            el.textContent = fv.text;
+            el.className   = `field-val ${fv.cls}`;
+        }
+
+        // Sync control widgets (skip if the element has focus — user may be editing)
+        for (const key of Object.keys(data)) {
+            const dot    = key.indexOf('.');
+            if (dot < 0) continue;
+            const prefix = key.slice(0, dot);
+            const sub    = key.slice(dot + 1);
+
+            if (sub === 'enabled') {
+                const btn = document.getElementById(`btn_en_${prefix}`);
+                if (btn && document.activeElement !== btn)
+                    setEnableBtn(prefix, data[key] === 'true' || data[key] === true);
+            }
+            if (sub === 'mode') {
+                const sel = document.getElementById(`sel_mode_${prefix}`);
+                if (sel && document.activeElement !== sel)
+                    sel.value = String(data[key]);
+            }
+        }
+    }
+
+    // ── Control actions ──────────────────────────────────────────────────────────
+
+    function setEnableBtn(prefix, enabled) {
+        const btn = document.getElementById(`btn_en_${prefix}`);
+        if (!btn) return;
+        btn.dataset.enabled = enabled ? '1' : '0';
+        btn.textContent     = enabled ? 'ON' : 'OFF';
+        btn.className       = `toggle-btn ${enabled ? 'enabled' : 'disabled'}`;
+    }
+
+    function toggleEnable(prefix) {
+        const btn  = document.getElementById(`btn_en_${prefix}`);
+        const next = btn.dataset.enabled === '1' ? 0 : 1;
+        sendSet(`${prefix}.enable`, next);
+        setEnableBtn(prefix, next === 1);   // optimistic
+    }
+
+    function sendMode(prefix) {
+        sendSet(`${prefix}.mode`, document.getElementById(`sel_mode_${prefix}`).value);
+    }
+
+    function sendSpeed(prefix) {
+        sendSet(`${prefix}.speed`, document.getElementById(`inp_spd_${prefix}`).value);
+    }
+
+    function sendRaw() {
+        const key = document.getElementById('rawKey').value.trim();
+        const val = document.getElementById('rawVal').value.trim();
+        if (key) sendSet(key, val);
+    }
+
+    // Enter key on raw inputs
+    ['rawKey', 'rawVal'].forEach(id =>
+        document.getElementById(id).addEventListener('keydown', e => {
+            if (e.key === 'Enter') sendRaw();
+        })
+    );
+
+    // ── Poll loop ────────────────────────────────────────────────────────────────
+
+    async function fetchData() {
+        try {
+            const r = await fetch('/data');
+            if (!r.ok) throw new Error(r.status);
+            const data = await r.json();
+
+            document.getElementById('connDot').className    = 'conn-dot ok';
+            document.getElementById('connLabel').textContent = 'Connected';
+            document.getElementById('lastUpdate').textContent =
+                'Last update: ' + new Date().toLocaleTimeString();
+
+            if (!initialized) {
+                buildUI(groupByPrefix(data));
+                initialized = true;
+            }
+            syncValues(data);
+
+        } catch {
+            document.getElementById('connDot').className    = 'conn-dot';
+            document.getElementById('connLabel').textContent = 'Disconnected';
+            document.getElementById('lastUpdate').textContent = 'Connection lost — retrying…';
+        }
+        setTimeout(fetchData, POLL_MS);
+    }
+
+    fetchData();
+</script>
 </body>
 </html>

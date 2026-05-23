@@ -1,303 +1,177 @@
-/**
- *
- */
 #include "webApp.h"
+#include <string.h>
+#include <stdlib.h>
 
-#include <math.h>
+#define TAG           "WEBAPP"
+#define MAX_PARAM_LEN  64
 
-esp_err_t handleRoot(httpd_req_t *req);
-esp_err_t handleSetpct(httpd_req_t *req);
-esp_err_t handleGetData(httpd_req_t *req);
-esp_err_t handleMtrEnable(httpd_req_t *req);
-esp_err_t handleMtrMode(httpd_req_t *req);
-esp_err_t handleMtrIdx(httpd_req_t *req);
-esp_err_t handleMtrSpeed(httpd_req_t *req);
-// esp_err_t handleDebug(httpd_req_t *req);
-// esp_err_t handleTemp(httpd_req_t *req);
-esp_err_t handlePing(httpd_req_t *req);
-
-// HTML root page
 extern const char index_html_start[] asm("_binary_index_html_start");
 extern const char index_html_end[]   asm("_binary_index_html_end");
+extern const char style_css_start[]  asm("_binary_style_css_start");
+extern const char style_css_end[]    asm("_binary_style_css_end");
 
-#define MAX_URIS 6
-#define MAX_URI_PARAM_LEN 64
+// ── Helpers ───────────────────────────────────────────────────────────────────
+static char *paramBuf;
 
-#define TAG "WEBAPP"
-
-int tgtIdx = 0;
-
-httpd_uri_t methodUris[] = {
-    // {
-    //     .uri = "/cmd",
-    //     .method = HTTP_GET,
-    //     .handler = handleCmd
-    // },
-    // {
-    //     .uri = "/setpct",
-    //     .method = HTTP_GET,
-    //     .handler = handleSetpct,
-    // },
-    {
-        .uri = "/getData",
-        .method = HTTP_GET,
-        .handler = handleGetData,
-    },
-    {
-        .uri = "/ping",
-        .method = HTTP_GET,
-        .handler = handlePing,
-    },
-    {
-        .uri = "/mtrEnable",
-        .method = HTTP_GET,
-        .handler = handleMtrEnable,
-    },
-    {
-        .uri = "/mtrMode",
-        .method = HTTP_GET,
-        .handler = handleMtrMode,
-    },
-    {
-        .uri = "/mtrIdx",
-        .method = HTTP_GET,
-        .handler = handleMtrIdx,
-    },
-    {
-        .uri = "/mtrSpeed",
-        .method = HTTP_GET,
-        .handler = handleMtrSpeed,
-    },
-    // {
-    //     .uri = "/temp",
-    //     .method = HTTP_GET,
-    //     .handler = handle_temp,
-    // },
-    // {
-    //     .uri = "/debug",
-    //     .method = HTTP_GET,
-    //     .handler = handle_debug,
-    // },
-};
-
-resp_t handleGetUri(httpd_req_t *req, char *param, char *key)
+static resp_t getUriParam(httpd_req_t *req, char *out, size_t outLen, const char *key)
 {
-    char *buf;
-    char tempParam[MAX_URI_PARAM_LEN] = {0};
     int len = httpd_req_get_url_query_len(req);
-    resp_t sts = RESP_OK;
-    if (len <= 0) {
-        return RESP_ERR;
-    }
-    len = len + 1;
-    buf = malloc(len);
-    if (httpd_req_get_url_query_str(req, buf, len) == ESP_OK) {
-        esp_err_t err = httpd_query_key_value(buf, key, tempParam, sizeof(tempParam));
-        if (err == ESP_OK) {
-            memcpy(param, tempParam, sizeof(tempParam));
-            LOG_V("rawParam: %s| %s", tempParam, param);
+    if (len <= 0) return RESP_ERR;
 
-        }
-        else {
-            LOG_E("Error getting value for key: %s| err: %s", key, esp_err_to_name(err));
-            sts = RESP_ERR;
-        }
+    resp_t sts = RESP_ERR;
+    if (httpd_req_get_url_query_str(req, paramBuf, len + 1) == ESP_OK) {
+        if (httpd_query_key_value(paramBuf, key, out, outLen) == ESP_OK)
+            sts = RESP_OK;
     }
-    else {
-        LOG_E("Error getting query string");
-        sts = RESP_ERR;
-    }
-    free(buf);
+
     return sts;
 }
 
-esp_err_t handleRoot(httpd_req_t *req)
+// ── Handlers ──────────────────────────────────────────────────────────────────
+
+static esp_err_t handleRoot(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
     return httpd_resp_send(req, index_html_start, index_html_end - index_html_start);
 }
 
-/*
-esp_err_t handleCmd(httpd_req_t *req)
-{
-    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
-
-    char param[MAX_URI_PARAM_LEN] = {0};
-    LOG_I("Calling set cmd");
-    resp_t sts = handleGetUri(req, param, "dir");
-
-    if (sts == RESP_OK) {
-        // Cancel closed loop, learning, etc.
-        // setTargetPercent(mtr, NAN);
-        setMotorDrive(mtr, MTR_STOP);
-
-        if (strcmp(param, "fwd") == 0) {
-            // mtr->driveDir = MTR_FORWARD;
-            setMotorDrive(mtr, MTR_FORWARD);
-        }
-        else if (strcmp(param, "rev") == 0) {
-            // mtr->driveDir = MTR_REVERSE;
-            setMotorDrive(mtr, MTR_REVERSE);
-        }
-    }
-    else {
-        LOG_E("Error when parsing URI: handleCmd");
-    }
-    return httpd_resp_send(req, NULL, 0);  // 204
-}*/
-
-esp_err_t handleMtrEnable(httpd_req_t *req)
-{
-    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
-
-    char param[MAX_URI_PARAM_LEN] = {0};
-    LOG_I("Calling set mtrState");
-    resp_t sts = handleGetUri(req, param, "state");
-
-    if (sts == RESP_OK) {
-        // Cancel closed loop, learning, etc.
-        bool enable = atoi(param);
-        LOG_I("Setting Enable: %d", enable);
-        setMotorEnable(mtr, enable);
-    }
-    else {
-        LOG_E("Error when parsing URI: handleMtrEnable");
-    }
-    return httpd_resp_send(req, NULL, 0);  // 204
-}
-
-esp_err_t handleMtrMode(httpd_req_t *req)
-{
-    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
-
-    char param[MAX_URI_PARAM_LEN] = {0};
-    LOG_I("Calling set mtr mode");
-    resp_t sts = handleGetUri(req, param, "mode");
-
-    if (sts == RESP_OK) {
-        // Cancel closed loop, learning, etc.
-        mtrDriveMode_e mode = atoi(param);
-        LOG_I("Setting Mtr Mode: %d", mode);
-        setDriveMode(mtr, mode);
-    }
-    else {
-        LOG_E("Error when parsing URI: handleMtrMode");
-    }
-    return httpd_resp_send(req, NULL, 0);  // 204
-}
-
-esp_err_t handleMtrIdx(httpd_req_t *req)
-{
-    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-
-    char param[MAX_URI_PARAM_LEN] = {0};
-    LOG_I("Calling set mtr mode");
-    resp_t sts = handleGetUri(req, param, "idx");
-
-    if (sts == RESP_OK) {
-        // Cancel closed loop, learning, etc.
-        int setIdx = atoi(param);
-        LOG_I("Setting mtrIdx: %d", setIdx);
-        if (setIdx >= mtrCtrl->numMotors) {
-            LOG_W("Invalid motor Idx set");
-        }
-        else {
-            tgtIdx = setIdx;
-        }
-    }
-    else {
-        LOG_E("Error when parsing URI: handleMtrIdx");
-    }
-    return httpd_resp_send(req, NULL, 0);  // 204
-}
-
-esp_err_t handleMtrSpeed(httpd_req_t *req)
-{
-    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
-
-    char param[MAX_URI_PARAM_LEN] = {0};
-    LOG_I("Calling set mtr Speed");
-    resp_t sts = handleGetUri(req, param, "speed");
-
-    if (sts == RESP_OK) {
-        // Cancel closed loop, learning, etc.
-        int setSpeed = atoi(param);
-        LOG_I("Setting mtrSpeed: %d", setSpeed);
-        setDrivePwm(mtr, setSpeed);
-    }
-    else {
-        LOG_E("Error when parsing URI: handleMtrSpeed");
-    }
-    return httpd_resp_send(req, NULL, 0);  // 204
-}
-
-
-
-esp_err_t handleSetpct(httpd_req_t *req)
-{
-    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
-
-    char param[MAX_URI_PARAM_LEN] = {0};
-    LOG_V("Calling set pct");
-    // resp_t sts = handleGetUri(req, param, "val");
-    // if (sts == RESP_OK) {
-    //     float tmpPct = atof(param)/100.0;
-    //     setTargetPercent(mtr, tmpPct);
-    // }
-    // else {
-    //     LOG_E("Error when parsing URI: handleCmd");
-    // }
-    return httpd_resp_send(req, NULL, 0);  // 204
-}
-
-esp_err_t handleGetData(httpd_req_t *req)
-{
-    motorCtrlCtx_t *mtrCtrl = (motorCtrlCtx_t *)req->user_ctx;
-    motorCtx_t *mtr = &mtrCtrl->mtrs[tgtIdx];
-
-    // float ang = readAS5600Deg(&mtr->encoderCfg);
-    float ang   = mtr->position;
-    int tgt   = mtr->cmd;
-    int dir     = mtr->dir;
-    int mtrSt  = (int) mtr->enabled;
-    int mtrMode = (int) mtr->ctrlMode;
-    // float pct   = percentOpen(ang);
-    char resp[64];
-    snprintf(resp, sizeof(resp), "%.1f,%d,%d,%d,%d,%d", ang, tgt, mtrSt,
-             mtrMode, tgtIdx, dir);
-    httpd_resp_set_type(req, "text/plain; charset=utf-8");
-    return httpd_resp_send(req, resp, strlen(resp));
-}
-
-esp_err_t handlePing(httpd_req_t *req)
+static esp_err_t handlePing(httpd_req_t *req)
 {
     return httpd_resp_sendstr(req, "pong");
 }
 
-void start_http_server(webapp_t *web, motorCtrlCtx_t *mtr)
+static esp_err_t handleStyleCss(httpd_req_t *req)
 {
-    esp_log_level_set(TAG, ESP_LOG_INFO); // Setting debug
-    httpd_config_t dfltCfg = HTTPD_DEFAULT_CONFIG();
-    memcpy(&web->config, &dfltCfg, sizeof(httpd_config_t));
+    httpd_resp_set_type(req, "text/css");
+    return httpd_resp_send(req, style_css_start, style_css_end - style_css_start);
+}
 
-    web->server = NULL;
+/* GET /data → {"mtr0.pos":123.45,"mtr0.enabled":false,...}
+   Chunked so buffer size doesn't grow with field count.
+*/
+static esp_err_t handleGetData(httpd_req_t *req)
+{
+    webApp_t *web = (webApp_t *)req->user_ctx;
+    char val[48];
+    char chunk[96];
 
-    if (httpd_start(&web->server, &web->config) == ESP_OK) {
-        httpd_uri_t uri_root = {
-            .uri       = "/",
-            .method    = HTTP_GET,
-            .handler   = handleRoot,
-        };
-        httpd_register_uri_handler(web->server, &uri_root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr_chunk(req, "{");
 
-        for (int uri = 0; uri < MAX_URIS; uri++) {
-            methodUris[uri].user_ctx = mtr;
-            httpd_register_uri_handler(web->server, &methodUris[uri]);
+    for (int i = 0; i < web->monitorCount; i++) {
+        web->monitors[i].get(val, sizeof(val), web->monitors[i].ctx);
+        int n = snprintf(chunk, sizeof(chunk), "%s\"%s\":%s",
+                         i > 0 ? "," : "", web->monitors[i].key, val);
+        httpd_resp_send_chunk(req, chunk, n);
+    }
+
+    httpd_resp_sendstr_chunk(req, "}");
+    httpd_resp_send_chunk(req, NULL, 0);
+    return ESP_OK;
+}
+
+/* GET /set?key=mtr0.speed&val=200 → {"ok":true} or {"ok":false,"error":"..."}
+   Calling specific control commands that are registered within the main.c file.
+*/
+static esp_err_t handleSet(httpd_req_t *req)
+{
+    webApp_t *web = (webApp_t *)req->user_ctx;
+    char key[WEBAPP_KEY_LEN] = {0};
+    char val[MAX_PARAM_LEN]  = {0};
+
+    httpd_resp_set_type(req, "application/json");
+
+    if (getUriParam(req, key, sizeof(key), "key") != RESP_OK ||
+        getUriParam(req, val, sizeof(val), "val") != RESP_OK) {
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing key or val\"}");
+    }
+
+    for (int i = 0; i < web->controlCount; i++) {
+        if (strncmp(web->controls[i].key, key, WEBAPP_KEY_LEN) == 0) {
+            web->controls[i].set(val, web->controls[i].ctx);
+            LOG_I("set %s = %s", key, val);
+            return httpd_resp_sendstr(req, "{\"ok\":true}");
         }
     }
+
+    LOG_W("set: unknown key '%s'", key);
+    return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"unknown key\"}");
+}
+
+// ── Registration ──────────────────────────────────────────────────────────────
+
+resp_t webAppRegisterMonitor(webApp_t *web, const char *key, webAppGetter_t get, void *ctx)
+{
+    if (!key || !ctx || !get) {
+        return RESP_ERR;
+    }
+    if (web->monitorCount >= WEBAPP_MAX_MONITORS) {
+        LOG_E("Monitor table full (max %d)", WEBAPP_MAX_MONITORS);
+        return RESP_ERR;
+    }
+    webAppMonitor_t *entry = &web->monitors[web->monitorCount++];
+    strncpy(entry->key, key, WEBAPP_KEY_LEN - 1);
+    entry->key[WEBAPP_KEY_LEN - 1] = '\0';
+    entry->get = get;
+    entry->ctx = ctx;
+    return RESP_OK;
+}
+
+resp_t webAppRegisterControl(webApp_t *web, const char *key, webAppSetter_t set, void *ctx)
+{
+    if (!key || !ctx || !set) {
+        return RESP_ERR;
+    }
+    if (web->controlCount >= WEBAPP_MAX_CONTROLS) {
+        LOG_E("Control table full (max %d)", WEBAPP_MAX_CONTROLS);
+        return RESP_ERR;
+    }
+    webAppControl_t *entry = &web->controls[web->controlCount++];
+    strncpy(entry->key, key, WEBAPP_KEY_LEN - 1);
+    entry->key[WEBAPP_KEY_LEN - 1] = '\0';
+    entry->set = set;
+    entry->ctx = ctx;
+    return RESP_OK;
+}
+
+static void initializeRoutes(webApp_t *web)
+{
+    httpd_uri_t routes[] = {
+        { .uri = "/",          .method = HTTP_GET, .handler = handleRoot,     .user_ctx = NULL },
+        { .uri = "/ping",      .method = HTTP_GET, .handler = handlePing,     .user_ctx = NULL },
+        { .uri = "/style.css", .method = HTTP_GET, .handler = handleStyleCss, .user_ctx = NULL },
+        { .uri = "/data",      .method = HTTP_GET, .handler = handleGetData,  .user_ctx = web  },
+        { .uri = "/set",       .method = HTTP_GET, .handler = handleSet,      .user_ctx = web  },
+    };
+
+    for (int i = 0; i < (int)(sizeof(routes) / sizeof(routes[0])); i++) {
+        httpd_register_uri_handler(web->server, &routes[i]);
+    }
+}
+
+// ── Server init ───────────────────────────────────────────────────────────────
+resp_t startHttpServer(webApp_t *web)
+{
+    esp_log_level_set(TAG, ESP_LOG_INFO);
+
+    httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
+    memcpy(&web->config, &cfg, sizeof(httpd_config_t));
+    web->server = NULL;
+
+    paramBuf = malloc(MAX_PARAM_LEN);
+    if (!paramBuf) {
+        LOG_E("Error when allocating param buffer");
+        return RESP_ERR;
+    }
+
+    if (httpd_start(&web->server, &web->config) != ESP_OK) {
+        LOG_E("Failed to start HTTP server");
+        return RESP_ERR;
+    }
+
+    /* Initializing each route available in the webApp */
+    initializeRoutes(web);
+
+    LOG_I("HTTP server ready — GET /  GET /style.css  GET /data  GET /set?key=X&val=Y  GET /ping");
+    return RESP_OK;
 }
