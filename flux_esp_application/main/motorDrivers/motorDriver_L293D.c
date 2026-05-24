@@ -14,6 +14,8 @@
 #include "driver/mcpwm_types.h"
 
 #define TAG "L293D"
+#define DBG dbgFlag
+static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
 
 typedef struct {
     bool enable;

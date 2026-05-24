@@ -3,6 +3,8 @@
 #include "esp_timer.h"
 
 #define TAG "DUMMY_FB"
+#define DBG dbgFlag
+static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
 
 typedef struct {
     uint16_t maxFbVal;

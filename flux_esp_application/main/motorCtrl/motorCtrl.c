@@ -11,6 +11,8 @@
 
 // Needed for Logging module name
 #define TAG "MotorCtrl"
+#define DBG dbgFlag
+static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
 
 // Default Values
 #define IN1_PIN 22
@@ -255,6 +257,7 @@ void coastControlLoop(motorCtx_t *mtr)
     case MODE_OFF:
         mtr->cmd = 0;
         mtr->dir = MTR_STOP;
+        // no break;
     case MODE_OPEN:
         mtr->motorIF->setDir(mtr->motorIF, mtr->dir);
         sts = mtr->motorIF->setDrive(mtr->motorIF, mtr->cmd);
@@ -279,7 +282,6 @@ void motorControlTask(void *arg)
     CHECK_PTR_RET(arg);
     motorCtrlCtx_t *ctx = (motorCtrlCtx_t *) arg;
     CHECK_PTR_RET(ctx);
-
     while(1){
         // TODO: Add a semaphore here to have this loop go at a certain rate
 
@@ -401,7 +403,7 @@ resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx)
     CHECK_PTR_RET_ERR(mtrCtrlCtx);
     esp_log_level_set(TAG, ESP_LOG_DEBUG); // Setting debug
 
-    mtrCtrlCtx->numMotors = 2; //TODO: Make this a macro
+    mtrCtrlCtx->numMotors = 2;
     resp_t sts = motorInit(mtrCtrlCtx);
     RETURN_VAL_IF_ERR_LOG(sts, sts, "Error during motor Init");
 

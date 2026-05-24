@@ -3,6 +3,9 @@
 #include <stdlib.h>
 
 #define TAG           "WEBAPP"
+#define DBG dbgFlag
+static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
+
 #define MAX_PARAM_LEN  64
 
 extern const char index_html_start[] asm("_binary_index_html_start");
