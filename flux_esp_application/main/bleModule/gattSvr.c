@@ -14,6 +14,9 @@
 
 /*** Maximum number of characteristics with the notify flag ***/
 #define TAG "GATT_SVR"
+#define DBG dbgFlag
+static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
+
 #define NUM_SVCS 2
 /* CHARS coming from application are in multiple packets. Use static buffers to
    read then process later

@@ -7,6 +7,9 @@
 #include "loggingDefs.h"
 
 #define TAG               "PKT_HANDLER"
+#define DBG dbgFlag
+static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
+
 #define DECODE_BUF_SIZE   512
 #define ASSEMBLE_BUF_SIZE 4096
 

@@ -15,6 +15,9 @@
 #include "fluxBleService.h"
 
 #define TAG "BLE_SVR"
+#define DBG dbgFlag
+static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
+
 #define BLE_service_ADD 1
 #define BLE_service_DELETE 0
 

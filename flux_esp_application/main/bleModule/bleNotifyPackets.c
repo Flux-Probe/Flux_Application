@@ -6,6 +6,8 @@
 #include "esp_timer.h"
 
 #define TAG "NOTIFY"
+#define DBG dbgFlag
+static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
 
 static inline long long ts_ms(void)
 {

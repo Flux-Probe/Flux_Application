@@ -10,6 +10,8 @@
 
 // Needed for Logging module name
 #define TAG "AS5600"
+#define DBG dbgFlag
+static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
 
 typedef struct {
     uint16_t     dbgFlag;

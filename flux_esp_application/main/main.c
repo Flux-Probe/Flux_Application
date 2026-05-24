@@ -5,7 +5,6 @@
  */
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-// BLE MODULE
 #include "motorCtrl.h"
 #include "wifiSetup.h"
 #include "fluxBleService.h"
@@ -15,6 +14,8 @@
 #include "nvs_flash.h"
 
 #define TAG "MAIN"
+#define DBG dbgFlag
+static uint16_t dbgFlag = DBG_INFO | DBG_ERROR;
 
 static int logLvl = ESP_LOG_DEBUG;
 
@@ -106,7 +107,6 @@ void app_main(void)
 
     start_ble_service(&espIF.bleSvc);
 
-    LOG_I("Starting MotorCtrl");
     sts = motorCtrlInit(&espIF.motorCtrl);
     RETURN_IF_ERR_LOG(sts, "Done MotorCtrl init %d", sts);
 
