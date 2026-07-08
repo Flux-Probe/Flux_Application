@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "driver/i2c_master.h"
+#include "i2cTypes.h"
 #include "feedback.h"
 
 #define MAX_READ_SIZE 2 //Only 2 bytes reading at a time
@@ -24,11 +24,6 @@
 #define I2C_CLK_SPD 400000
 #define I2C_READ_TIMEOUT 1000
 // #endif //if 1
-
-typedef struct {
-    i2c_master_bus_config_t masterCfg;
-    i2c_device_config_t devCfg;
-} i2cCfg_t;
 
 typedef struct {
     uint16_t dbgFlag;

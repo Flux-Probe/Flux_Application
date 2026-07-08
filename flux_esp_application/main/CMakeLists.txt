@@ -1,4 +1,5 @@
 set(srcs "main.c"
+         "tempSensor/ads1115.c"
          "bleModule/gattSvr.c"
          "bleModule/fluxBleService.c"
          "bleModule/blePacketHandler.c"
@@ -17,6 +18,7 @@ set(dirs "."
         "motorCtrl"
         "motorDrivers"
         "feedback"
+        "tempSensor"
         "webInterface"
         "../../"        #For Configuration files
         )

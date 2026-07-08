@@ -12,12 +12,15 @@
 #include "mtrWebBindings.h"
 #include "mainDefs.h"
 #include "nvs_flash.h"
+#include "tempSensor.h"
+#include "ads1115.h"
+#include "i2cTypes.h"
 
 #define TAG "MAIN"
 #define DBG dbgFlag
-static uint16_t dbgFlag = DBG_INFO | DBG_ERROR;
+static uint16_t dbgFlag = DBG_INFO | DBG_ERROR | DBG_WARNING;
 
-static int logLvl = ESP_LOG_DEBUG;
+static int logLvl = ESP_LOG_VERBOSE;
 
 #define VAL_LIM 1000
 
@@ -26,6 +29,7 @@ typedef struct {
     webApp_t        webApp;
     wifiConn_t      wifi;
     bleSvc_t        bleSvc;
+    tempSensor_t    *temp;
 } espIf_t;
 
 static espIf_t espIF;
@@ -51,9 +55,17 @@ void testTask(void *arg)
     espIf_t *espIf = (espIf_t *) arg;
     int32_t cntr = 0;
 
+    float temp_1 = 0;
+    float temp_2 = 0;
+
     while(1) {
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(1000));
         cntr ++;
+
+        espIF.temp->readTemp(espIF.temp, 0, &temp_1);
+        espIF.temp->readTemp(espIF.temp, 1, &temp_2);
+
+        LOG_I("Temp 1: %.2f | Temp 2: %.2f", temp_1, temp_2);
 
         // Dummy task to change the values of each characteristic to debug on the app
 #if 0
@@ -105,21 +117,50 @@ void app_main(void)
     sts = initFlash();
     RETURN_IF_ERR_LOG(sts, "Error with Nvs Flash");
 
-    start_ble_service(&espIF.bleSvc);
+    LOG_I("info");
+    LOG_W("warn");
+    LOG_E("err");
+    LOG_D("dbg");
+    // start_ble_service(&espIF.bleSvc);
 
-    sts = motorCtrlInit(&espIF.motorCtrl);
-    RETURN_IF_ERR_LOG(sts, "Done MotorCtrl init %d", sts);
+    // sts = motorCtrlInit(&espIF.motorCtrl);
+    // RETURN_IF_ERR_LOG(sts, "Done MotorCtrl init %d", sts);
 
-    sts = wifi_conn_init(&espIF.wifi);
-    RETURN_IF_ERR_LOG(sts, "Error with Wifi init");
+    // sts = wifi_conn_init(&espIF.wifi);
+    // RETURN_IF_ERR_LOG(sts, "Error with Wifi init");
 
-    sts = startHttpServer(&espIF.webApp);
-    RETURN_IF_ERR_LOG(sts, "Error when starting webApp");
+    // sts = startHttpServer(&espIF.webApp);
+    // RETURN_IF_ERR_LOG(sts, "Error when starting webApp");
 
-    motorCtrlRegisterWebBindings(&espIF.webApp, &espIF.motorCtrl);
+    // motorCtrlRegisterWebBindings(&espIF.webApp, &espIF.motorCtrl);
+    ads1115Cfg_t tempCfg = {
+        .dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR,
+        .i2cCfg = {
+            .masterCfg.i2c_port    = I2C_NUM_1,
+            .masterCfg.sda_io_num  = 21,
+            .masterCfg.scl_io_num  = 22,
+            .masterCfg.clk_source  = I2C_CLK_SRC_DEFAULT,
+            .devCfg.dev_addr_length    = I2C_ADDR_BIT_LEN_7,
+            .devCfg.device_address     = ADS1115_ADDR_0,
+            .devCfg.scl_speed_hz       = 400000,
+        },
+        .dr = ADS1115_128SPS,
+        .vRef = 3.3,
+        .rRef = 4700,
+        .pga = ADS1115_PGA_2048,
+        .numChannels = 2,
+        .alertPin = 4,
+    };
+
+    espIF.temp = ads1115Init(tempCfg);
+    if (espIF.temp == NULL) {
+        LOG_E("ADS1115 init failed — temperature readings unavailable");
+    }
 
 #ifdef DEBUG
-    xTaskCreate(testTask, "testTask", 4096, &espIF, 10, NULL);
+    if (espIF.temp != NULL) {
+        xTaskCreate(testTask, "testTask", 4096, &espIF, 10, NULL);
+    }
 #endif
 
 }
