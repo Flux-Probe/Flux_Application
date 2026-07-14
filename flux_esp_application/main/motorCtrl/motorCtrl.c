@@ -69,7 +69,7 @@ void setDrivePwm(motorCtx_t *motor, int32_t setDrive)
 }
 
 
-#if 0
+#ifdef COAST_CONTROL_LOOP
 // ----------- Region Detection -----------
 bool inRegion(float a, float s, float e)
 {
@@ -282,7 +282,7 @@ void motorControlTask(void *arg)
     CHECK_PTR_RET(arg);
     motorCtrlCtx_t *ctx = (motorCtrlCtx_t *) arg;
     CHECK_PTR_RET(ctx);
-    while(1){
+    while(1) {
         // TODO: Add a semaphore here to have this loop go at a certain rate
 
         vTaskDelay(pdMS_TO_TICKS(FREQ_2HZ));
