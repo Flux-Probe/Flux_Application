@@ -10,6 +10,7 @@
 #include "wifiSetup.h"
 #include "fluxBleService.h"
 #include "webApp.h"
+#include "max31865.h"
 #include "mtrWebBindings.h"
 #include "mainDefs.h"
 #include "nvs_flash.h"
@@ -21,6 +22,26 @@
 static uint16_t dbgFlag = DBG_INFO | DBG_ERROR;
 
 static int logLvl = ESP_LOG_DEBUG;
+
+#define MAX31865_CLK_PIN        18
+#define MAX31865_MISO_PIN       19
+#define MAX31865_MOSI_PIN       23
+#define MAX31865_CS_1_PIN       26
+#define MAX31865_DRDY_PIN       25
+
+static max31865_cfg_t maxCfg = {
+    .filter         = MAX31865_FILTER_50HZ,
+    .clockSpeedHz   = MAX31865_MAX_CLK_HZ,
+    .csPin          = MAX31865_CS_1_PIN,
+    .misoPin        = MAX31865_MISO_PIN,
+    .mosiPin        = MAX31865_MOSI_PIN,
+    .sclkPin        = MAX31865_CLK_PIN,
+    .wireMode       = MAX31865_2WIRE,
+    .refResistor    = 4300,
+    .rtdNominal     = 1000,
+    .spiHost        = SPI2_HOST,
+    .drdyPin        = -1,
+};
 
 #define VAL_LIM 1000
 
@@ -98,11 +119,10 @@ resp_t initFlash(void)
 
 void testTask(void *arg)
 {
-    espIf_t *espIf = (espIf_t *) arg;
     int32_t cntr = 0;
 
     while(1) {
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(1000));
         cntr ++;
 
         // Dummy task to change the values of each characteristic to debug on the app
@@ -256,6 +276,12 @@ void app_main(void)
 
     motorCtrlRegisterWebBindings(&espIF.webApp, &espIF.motorCtrl);
 
+    espIF.rtdSensor = max31865Init(maxCfg);
+
+    if (!espIF.rtdSensor) {
+        LOG_E("Error when initializing RTD module");
+        return;
+    }
 
     xTaskCreate(testTask, "testTask", 4096, &espIF, 10, NULL);
 }

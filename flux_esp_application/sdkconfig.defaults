@@ -14,3 +14,8 @@ CONFIG_BT_NIMBLE_DYNAMIC_SERVICE=y
 
 # 0=NONE, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG, 5=VERBOSE
 CONFIG_LOG_MAXIMUM_LEVEL=5
+
+# SPI master (used by MAX31865) is polled from task context, not from an ISR,
+# so its ISR/HAL code doesn't need to live in IRAM. Frees ~5KB of IRAM.
+CONFIG_SPI_MASTER_ISR_IN_IRAM=n
+CONFIG_SPI_SLAVE_ISR_IN_IRAM=n
