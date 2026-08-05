@@ -33,7 +33,7 @@ typedef struct motorIF_s {
     resp_t (*getDrive)    (struct motorIF_s *mtrDriver);
     // resp_t (*getCurrent)  (struct motorIF_s *mtrDriver);
     resp_t (*getStatus)   (struct motorIF_s *mtrDriver);
-    resp_t (*setDrive)    (struct motorIF_s *mtrDriver, uint32_t targetPwm);
+    resp_t (*setDrive)    (struct motorIF_s *mtrDriver, float target); // -1.0..+1.0, sign = direction
     resp_t (*setDir)      (struct motorIF_s *mtrDriver, mtrDriveDir_e dir);
     resp_t (*resetMotor)  (struct motorIF_s *mtrDriver);
 

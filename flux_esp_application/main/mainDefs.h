@@ -48,4 +48,13 @@ typedef enum {
         return (ret);                        \
     }
 
+#define LIM_VAL(x, h, l)           \
+    if ((x) < (l)) {               \
+        (x) = (l);                 \
+    }                              \
+    else if ((x) > (h)) {          \
+        (x) = (h);                 \
+    }                              \
+
+
 #endif // MAINDEFS_H
