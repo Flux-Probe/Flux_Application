@@ -33,12 +33,6 @@ typedef enum {
     MODE_OPEN, //Used when driving a set command
 } mtrDriveMode_e;
 
-
-// ───── Control logic ─────
-static const float A_START=113.0f, A_END=255.2f, B_START=282.1f, B_END=83.7f;
-static const float BAND_START=2.0f, BAND_STOP=0.9f, NEAR_DEG=15.0f;
-static const uint32_t CTL_DT_MS=40, REV_DEAD_MS=200;
-
 typedef struct {
     int64_t t_prev;
     int64_t t_start;
@@ -46,50 +40,39 @@ typedef struct {
 } positionControlTimeParams_t;
 
 typedef struct {
-    // Loop Parameters
-    float currAngle;
-    float targetAngle;
-    float prevAngle;
-    float openPct;
-    float angleVel;
-    float currPctopen;
+    float kp;
+    float ki;
+    float kd;
 
-    int32_t rawCurrent; //Not used yet
-    int32_t loopFreq;
+    float integral;
     float error;
+    float prevError;
 
-    // Coast Logic Params
-    positionControlTimeParams_t t_loop;
+    float minOut;
+    float maxOut;
+} pidLoop_t;
 
-    bool active;
-    int64_t t_coast;
-    float alpha;
-    float min;          // Min overshoot
-    float max;
-    float fwdCoast;
-    float revCoast;
-    float kvSec;
-    float angleAtStop;
-    float lowVelLim;
-    float minCoastTime;
-    float maxCoastTime;
-    mtrDriveDir_e dirAtStop;
-
-} coastParams_t;
 
 typedef struct motorCtx_s {
-    motorIF_t       *motorIF;
-    feedback_t      *fb;
+    uint8_t         idx;
     bool            enabled;
     mtrDriveState_e mtrState;
 
     /* Control Loop */
     mtrDriveMode_e  ctrlMode;
     float           position; //forward the feedback data into here
-    uint32_t        cmd;
-    mtrDriveDir_e   dir;
+    struct {
+        float upper;
+        float lower;
+    } limits; //forward the feedback data into here
+    float           posSetpoint;
+    float           driveSetpoint;
+    float           driveCmd;
+
+    motorIF_t       *motorIF;
+    feedback_t      *fb;
     void (*ctrlLoop) (struct motorCtx_s *motor);
-    void *ctrlParams;
+    pidLoop_t *pid;
 } motorCtx_t;
 
 typedef struct motorCtrlCtx_s{
@@ -100,15 +83,12 @@ typedef struct motorCtrlCtx_s{
 } motorCtrlCtx_t;
 
 
-resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx);
 // Turn motor on/off
-void setMotorEnable(motorCtx_t *motor, bool enable);
+void setMotorEnable(uint8_t idx, bool enable);
 // Change motor control mode
-void setDriveMode(motorCtx_t* motor, mtrDriveMode_e setMode);
-void setDrivePwm(motorCtx_t *motor, int32_t setDrive);
-
-// float percentOpen(float angle);
-// void setTargetPercent(mtrState_t *mtrState, float target);
+void setDriveMode(uint8_t idx, mtrDriveMode_e setMode);
+void setTargetPwm(uint8_t idx, float setDrive);
+void setTargetPos(uint8_t idx, float setDrive);
 
 resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx);
 

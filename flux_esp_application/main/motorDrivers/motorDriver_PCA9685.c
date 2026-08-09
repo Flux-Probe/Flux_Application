@@ -14,7 +14,6 @@ typedef struct {
     pca9685Dev_t  *dev;
     uint8_t       channelP;
     uint8_t       channelN;
-    mtrDriveDir_e dir;
 } pca9685MtrPrivCtx_t;
 
 /**

@@ -5,7 +5,6 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-#include "motorDriver_L293D.h"
 #include "as5600.h"
 #include "dummyFb.h"
 
@@ -13,6 +12,8 @@
 #define TAG "MotorCtrl"
 #define DBG dbgFlag
 static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
+
+motorCtrlCtx_t *mtrCtx;
 
 // Default Values
 #define IN1_PIN 22
@@ -22,9 +23,17 @@ static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
 #define EN1_PIN 0
 #define EN2_PIN 4
 
+#define CHECK_MTR_IDX(idx)                  \
+    if ((idx) >= MAX_MOTORS) {              \
+        LOG_E("Invalid index provided");    \
+        return;                             \
+    }                                       \
+
 // ───── Motor ─────
-void setMotorEnable(motorCtx_t *motor, bool enable)
+void setMotorEnable(uint8_t idx, bool enable)
 {
+    CHECK_MTR_IDX(idx);
+    motorCtx_t *motor = &mtrCtx->mtrs[idx];
     resp_t sts = motor->motorIF->enable(motor->motorIF);
     if (sts == RESP_OK) {
         motor->enabled = enable;
@@ -35,245 +44,52 @@ void setMotorEnable(motorCtx_t *motor, bool enable)
     }
 }
 
-void setDriveMode(motorCtx_t *motor, mtrDriveMode_e setMode)
+void setDriveMode(uint8_t idx, mtrDriveMode_e setMode)
 {
+    CHECK_MTR_IDX(idx);
+    motorCtx_t *motor = &mtrCtx->mtrs[idx];
     if (setMode == MODE_OFF) {
-        setDrivePwm(motor, 0);
+        setTargetPwm(idx, 0);
     }
 
     motor->ctrlMode = setMode;
 }
 
-void setDrivePwm(motorCtx_t *motor, int32_t setDrive)
+void setTargetPwm(uint8_t idx, float setDrive)
 {
+    CHECK_MTR_IDX(idx);
+    motorCtx_t *motor = &mtrCtx->mtrs[idx];
     /* Only want to be able to change the pwm directly when in open loop.
        Otherwise reject command.
 
        RFI: Possibly overwrite and force to openLoop?
     */
-    if (motor->ctrlMode != MODE_OPEN) {
-        LOG_W("Cannot Set target PWM when not in open loop mode");
-        return;
-    }
-
-    if (setDrive > 0) {
-        motor->dir = MTR_FORWARD;
-    }
-    else if (setDrive < 0) {
-        motor->dir = MTR_REVERSE;
-    }
-    else {
-        motor->dir = MTR_STOP;
-    }
-    motor->cmd = abs(setDrive);
+    motor->driveSetpoint = setDrive;
 }
 
-
-#if 0
-// ----------- Region Detection -----------
-bool inRegion(float a, float s, float e)
+void setTargetPos(uint8_t idx, float targetPos)
 {
-    bool rslt = (s <= e)? (a >= s && a <= e):(a >= s || a <= e);
-    return rslt;
+    CHECK_MTR_IDX(idx);
+    motorCtx_t *motor = &mtrCtx->mtrs[idx];
+    LIM_VAL(targetPos, motor->limits.upper, motor->limits.lower);
+    motor->posSetpoint = targetPos;
 }
 
-
-// Based on given angle, and limits, return percent the valve is open
-float pctWithin(float a, float s, float e){
-  float span = (e >= s) ? (e - s):(360.0f - s + e);
-  float ctr = fmodf(s + span * 0.5f + 360.0f, 360.0f);
-  float d = fabsf(a - ctr);
-  if (d > 180.0f) {
-    d = 360.0f - d;
-  }
-  return 100.0f * fmaxf(0.0f, 1.0f - d / (span * 0.5f));
-}
-
-float percentOpen(float a){
-    if(inRegion(a, A_START, A_END))
-        return pctWithin(a, A_START, A_END);
-    if(inRegion(a, B_START, B_END))
-        return pctWithin(a, B_START, B_END);
-    return 0.0f;
-}
-
-
-void setTargetPercent(mtrState_t *mtrState, float target) {
-    LOG_W("set pct: %.2f", target);
-    if (target < 0.0 || target > 1.0) {
-        mtrState->targetAngle = NAN;
-    }
-    else {
-        float tempAngle = A_START + ((A_END - A_START) * target);
-        mtrState->targetAngle = tempAngle;
-    }
-}
-
------------ Coasting Logic -----------
-void startCoastMeasure(coastParams_t *coast){
-    coast->active = true;
-    coast->t_coast = esp_timer_get_time()/1000;
-    coast->angleAtStop = coast->currAngle;
-    coast->dirAtStop = mtrState->driveDir;
-    setMotorDrive(mtrState, MTR_STOP);
-}
-
-void updateCoastLearn(coastParams_t *coast){
-    CHECK_PTR_RET(coast);
-    if(!coast->active) {
-        return;
-    }
-
-    int64_t currTime = esp_timer_get_time() / 1000;
-    float dt_s = (currTime - coast->t_coast) / 1000.0f;
-
-    if(dt_s < coast->minCoastTime) {
-        return;
-    }
-
-    if(fabsf(coast->angleVel) <= coast->lowVelLim || dt_s >= coast->maxCoastTime){
-        float delta = coast->currAngle - coast->angleAtStop;
-        float overshoot = delta;
-        if (coast->dirAtStop == MTR_REVERSE) {
-            overshoot = -overshoot;
-        }
-
-        if(overshoot < 0) {
-            overshoot = 0;
-        }
-        overshoot = fminf(coast->max, fmaxf(coast->min, overshoot));
-
-        if(coast->dirAtStop == MTR_FORWARD) {
-            coast->fwdCoast = ((1 - coast->alpha) * coast->fwdCoast)
-                            + coast->alpha * overshoot;
-        }
-        else {
-            coast->revCoast = ((1 - coast->alpha) * coast->revCoast)
-                            + coast->alpha * overshoot;
-        }
-        coast->active = false;
-    }
-}
-
-void targetPositionControl(motorCtx_t *motorCtx)
+static float pidUpdate(pidLoop_t *pid, float target, float curr, float dt)
 {
-    CHECK_PTR_RET_ERR(motorCtx);
-    coastParams_t *params = (coastParams_t *) motorCtx->ctrlParams;
-    CHECK_PTR_RET_ERR(params);
+    pid->error = target - curr;
+    pid->integral += pid->error * dt;
 
-    // Angle is invalid. Cut the motor Add a delay so cpu can be released
-    if(motorCtx->position < 0) {
-        motorCtx->cmd = MTR_STOP;
-        // return;
-    }
-    params->currAngle = motorCtx->position;
-    params->targetAngle = motorCtx->cmd;
-
-    // velocity estimation
-    if(isnan(params->prevAngle)) {
-        params->angleVel = 0;
-    }
-    else {
-        float dt_s = (params->t_loop.t_start - params->t_loop.t_prev) / 1000.0f;
-        if (dt_s > 0) {
-            float angDiff = params->currAngle - params->prevAngle;
-            params->angleVel = angDiff / dt_s;
-        }
-    }
-    params->t_loop.t_prev = params->t_loop.t_start;
-    params->prevAngle = params->currAngle;
-
-    updateCoastLearn(params);
-
-    if(isnan(params->targetAngle)) {
-        return;
-    }
-
-    params->error = params->targetAngle - params->currAngle;
-    float absError = fabsf(params->error);
-
-    // Low Band
-    if (absError <= BAND_STOP && motorCtx->cmd != MTR_STOP) {
-        startCoastMeasure(mtrState);
-        return;
-    }
-
-    mtrDriveDir_e targetDir = (mtrState->error > 0)? MTR_FORWARD:
-                                                        MTR_REVERSE;
-
-    if (absError <= NEAR_DEG) {
-        float stopDist = (targetDir == MTR_FORWARD)?
-                            mtrState->coast.fwdCoast: mtrState->coast.revCoast;
-        stopDist += BAND_STOP + mtrState->coast.kvSec * fabsf(mtrState->angleVel);
-        stopDist = fminf(NEAR_DEG, fmaxf(BAND_STOP + 0.2f, stopDist));
-
-        if (absError <= stopDist) {
-            if (mtrState->driveDir != MTR_STOP) {
-                startCoastMeasure(mtrState);
-            }
-            if (mtrState->coast.active) {
-                return;
-            }
-        }
-    }
-
-    if(absError > BAND_START){ // simple control band
-        if (targetDir != mtrState->driveDir) {
-            if (mtrState->t_loop.t_start - mtrState->t_loop.t_lastDirChanged >= REV_DEAD_MS) {
-                setMotorDrive(mtrState, targetDir);
-                mtrState->t_loop.t_lastDirChanged = mtrState->t_loop.t_start;
-            }
-            else {
-                setMotorDrive(mtrState, MTR_STOP);
-            }
-        }
-        else {
-            setMotorDrive(mtrState, mtrState->driveDir);
-        }
-    }
+    float output = (pid->kp * pid->error) + (pid->ki * pid->integral);
+    /* Clamp the PWM output depending on the motor */
+    LIM_VAL(output, pid->maxOut, pid->minOut);
+    return output;
 }
-#endif
 
-void coastControlLoop(motorCtx_t *mtr)
+void positionControlLoop(motorCtx_t *mtr)
 {
     CHECK_PTR_RET(mtr);
-    // LOG_D("Start of loop");
-    resp_t sts = RESP_OK;
-    // mtrState->t_loop.t_start = esp_timer_get_time() / 1000;
-
-    sts = mtr->fb->readData(mtr->fb, &mtr->position);
-    if (sts != RESP_OK){
-        LOG_W("ERR reading data from fb");
-    }
-
-    if (!mtr->enabled) {
-        mtr->ctrlMode = MODE_OFF;
-        mtr->cmd = MTR_STOP;
-    }
-
-    // Control Loop Logic
-    switch (mtr->ctrlMode)
-    {
-    case MODE_OFF:
-        mtr->cmd = 0;
-        mtr->dir = MTR_STOP;
-        // no break;
-    case MODE_OPEN:
-        mtr->motorIF->setDir(mtr->motorIF, mtr->dir);
-        sts = mtr->motorIF->setDrive(mtr->motorIF, mtr->cmd);
-        break;
-    case MODE_POS:
-        LOG_W("Not implemented yet");
-        // targetPositionControl(mtr);
-        break;
-    default:
-        LOG_W("INCORRECT DRIVE MODE"); //If this goes through this could spam
-        mtr->ctrlMode = MODE_OFF;
-        mtr->cmd = 0;
-        mtr->dir = MTR_STOP;
-        sts = mtr->motorIF->setDrive(mtr->motorIF, mtr->cmd);
-        break;
-    }
+    mtr->driveCmd = pidUpdate(mtr->pid, mtr->posSetpoint, mtr->position, FREQ_2HZ);
 }
 
 // ----------- Control Task -----------
@@ -282,25 +98,55 @@ void motorControlTask(void *arg)
     CHECK_PTR_RET(arg);
     motorCtrlCtx_t *ctx = (motorCtrlCtx_t *) arg;
     CHECK_PTR_RET(ctx);
+
+    LOG_I("Params %.2f | %.2f | %.2f | %.2f", ctx->mtrs[0].limits.lower, ctx->mtrs[0].limits.upper,
+                                              ctx->mtrs[1].limits.lower, ctx->mtrs[1].limits.upper);
+
     while(1){
         // TODO: Add a semaphore here to have this loop go at a certain rate
-
         vTaskDelay(pdMS_TO_TICKS(FREQ_2HZ));
         for (int idx = 0; idx < ctx->numMotors; idx++) {
             /* RFI: Add a field in motorCtx to decimate the speed at which each
-                motor is updated.
-            */
-            ctx->mtrs[idx].ctrlLoop(&ctx->mtrs[idx]);
-        }
-        LOG_W("Ctrl Loop: %d|%d|%d|%d|%.2f|=====|%d|%d|%d|%d|%.2f",
-              ctx->mtrs[0].ctrlMode, ctx->mtrs[0].enabled,
-              ctx->mtrs[0].cmd, ctx->mtrs[0].dir, ctx->mtrs[0].position,
-              ctx->mtrs[1].ctrlMode, ctx->mtrs[1].enabled,
-              ctx->mtrs[1].cmd, ctx->mtrs[1].dir, ctx->mtrs[1].position);
+               motor is updated. */
+            motorCtx_t *mtr = &ctx->mtrs[idx];
+            // RFI: Check the status of the motor here
 
+
+            resp_t sts = RESP_OK;
+            sts = mtr->fb->readData(mtr->fb, &mtr->position);
+
+            if (sts != RESP_OK){
+                /* RFI: Add a counter here. If we get an error from fb. We dont want to fail
+                * immediately, instead, skip this current loop (Put the drive to 0), increment the
+                * counter, if there is successive counts without feedback then fail.
+                *
+                * 2 counters. Successive fails and total fb read fails
+                */
+                LOG_W("ERR reading data from fb");
+            }
+
+            switch (mtr->ctrlMode)
+            {
+            case MODE_POS:
+                mtr->ctrlLoop(mtr);
+                break;
+            case MODE_OPEN:
+                mtr->driveCmd = mtr->driveSetpoint;
+                break;
+            case MODE_OFF:
+                mtr->driveCmd = 0.0f;
+                break;
+            default:
+                LOG_E("Invalid command mode. %d", mtr->ctrlMode);
+                break;
+            }
+
+            mtr->motorIF->setDrive(mtr->motorIF, mtr->driveCmd);
+        }
     }
 }
 
+#if 0
 resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
 {
     /*===== Motor 1 initializaiton =====*/
@@ -396,20 +242,32 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
     // Add any other initialization calls here
     return sts;
 };
+#endif
 
 
-resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx)
+resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrl)
 {
-    CHECK_PTR_RET_ERR(mtrCtrlCtx);
+    CHECK_PTR_RET_ERR(mtrCtrl);
     esp_log_level_set(TAG, ESP_LOG_DEBUG); // Setting debug
 
-    mtrCtrlCtx->numMotors = 2;
-    resp_t sts = motorInit(mtrCtrlCtx);
-    RETURN_VAL_IF_ERR_LOG(sts, sts, "Error during motor Init");
+    for (int i = 0; i < MAX_MOTORS; i++) {
+        if (!mtrCtrl->mtrs[i].motorIF) {
+            LOG_E("MotorIF for motor %d is not populated", i);
+            return RESP_ERR;
+        }
+        if (!mtrCtrl->mtrs[i].fb) {
+            LOG_E("fbIF for motor %d is not populated", i);
+            return RESP_ERR;
+        }
 
-    LOG_I("Creating motor ctrl task");
+        mtrCtrl->mtrs[MOTOR_1].mtrState = STATE_OPERATIONAL;
+        mtrCtrl->mtrs[MOTOR_1].ctrlLoop = positionControlLoop;
+    }
+
+    mtrCtx = mtrCtrl;
 
     // Create task for control.
-    xTaskCreate(motorControlTask, "motor_ctrl", 4096, mtrCtrlCtx, 10, NULL);
+    LOG_I("Creating motor ctrl task");
+    xTaskCreate(motorControlTask, "motor_ctrl", 4096, mtrCtx, 10, NULL);
     return RESP_OK;
 }
