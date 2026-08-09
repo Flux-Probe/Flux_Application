@@ -14,6 +14,7 @@
 #include "mainDefs.h"
 #include "nvs_flash.h"
 #include "motorDriver_PCA9685.h"
+#include "dummyFb.h"
 
 #define TAG "MAIN"
 #define DBG dbgFlag
@@ -71,6 +72,13 @@ typedef struct {
 } espIf_t;
 
 static espIf_t espIF;
+/* Driver structs */
+static pca9685Dev_t *pcaDev;
+
+/* Copy of interfaces used */
+static motorIF_t *mtrIF[MAX_MOTORS];
+static feedback_t *fbIF[MAX_MOTORS];
+
 
 resp_t initFlash(void)
 {
@@ -157,6 +165,70 @@ resp_t initI2CPorts(void)
     return RESP_OK;
 }
 
+/** Initialization function for MotorIF and Fb methods. Populate the motorCtrlCtx_t struct
+ *
+ *  Current Assumption:
+ *  - I2C busses used are already initialized
+ *  - Only setting up motors that ARE being used so far
+ */
+static resp_t initMotor_FbDrivers(motorCtrlCtx_t *motorCtrl)
+{
+    CHECK_PTR_RET_ERR(motorCtrl, "motorCtrl is not allocated");
+
+    /* Initialize the different motor drivers and motorIF */
+
+    // One for 4 motors
+    pca9685Cfg_t pcaCfg = {
+        .dbgFlag = DBG_INFO | DBG_ERROR,
+        .pwmFreqHz = PCA9685_MAX_FREQ,
+        .i2cBus = i2cMasterCfg[0].bus,
+        .devCfg = {
+            .dev_addr_length  = I2C_ADDR_BIT_LEN_7,
+            .device_address   = 0x40,
+            .scl_speed_hz     = 400000,
+        },
+    };
+
+    pcaDev = pca9685Init(pcaCfg);
+    if (!pcaDev) {
+        LOG_E("PCA Driver not created");
+        return RESP_ERR;
+    }
+
+    // Creating individual motorIF instances
+    motorDriverPCA9685Cfg_t mtrDrvPCA[MAX_MOTORS] = {
+        [MOTOR_1] = {
+            .channelPos = 0,
+            .channelNeg = 1,
+            .dev = pcaDev,
+        },
+        [MOTOR_2] = {
+            .channelPos = 2,
+            .channelNeg = 3,
+            .dev = pcaDev,
+        },
+    };
+
+    for (int i = 0; i < MAX_MOTORS; i++) {
+        mtrIF[i] = createMtrDriverIF_PCA9685(mtrDrvPCA[i]);
+        CHECK_PTR_RET_ERR(mtrIF[i], "Error creating motorIF %d for PCA", i);
+
+        fbIF[i] = dummyFbInit(1000);
+        CHECK_PTR_RET_ERR(fbIF[i], "Error when initializing Fb ptr %d", i);
+
+        motorCtrl->mtrs[i].motorIF = mtrIF[i];
+        motorCtrl->mtrs[i].fb = fbIF[i];
+        motorCtrl->mtrs[i].limits.lower = 0;
+        motorCtrl->mtrs[i].limits.upper = 1000;
+        motorCtrl->mtrs[i].idx = i;
+    }
+
+    motorCtrl->numMotors = MAX_MOTORS;
+    motorCtrl->debugFlag = DBG_DEBUG | DBG_ERROR | DBG_INFO | DBG_WARNING;
+    return RESP_OK;
+}
+
+
 void app_main(void)
 {
     resp_t sts = RESP_OK;
@@ -164,7 +236,14 @@ void app_main(void)
     sts = initFlash();
     RETURN_IF_ERR_LOG(sts, "Error with Nvs Flash");
 
+    sts = initI2CPorts();
+    RETURN_IF_ERR_LOG(sts, "Error initalizing I2C Buses");
+
     start_ble_service(&espIF.bleSvc);
+
+    // Create motorIF and FB
+    sts = initMotor_FbDrivers(&espIF.motorCtrl);
+    RETURN_IF_ERR_LOG(sts, "Done MotorCtrl init %d", sts);
 
     sts = motorCtrlInit(&espIF.motorCtrl);
     RETURN_IF_ERR_LOG(sts, "Done MotorCtrl init %d", sts);
@@ -177,7 +256,6 @@ void app_main(void)
 
     motorCtrlRegisterWebBindings(&espIF.webApp, &espIF.motorCtrl);
 
-    sts = initI2CPorts();
-    RETURN_IF_ERR_LOG(sts, "Error initalizing I2C Buses");
+
     xTaskCreate(testTask, "testTask", 4096, &espIF, 10, NULL);
 }

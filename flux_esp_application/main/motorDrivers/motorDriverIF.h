@@ -32,6 +32,8 @@ typedef struct motorIF_s {
     resp_t (*disable)     (struct motorIF_s *mtrDriver);
     resp_t (*getDrive)    (struct motorIF_s *mtrDriver);
     // resp_t (*getCurrent)  (struct motorIF_s *mtrDriver);
+
+    // RFI: Used to check if motor is actually connected. Possible way to get around hot swapping motors
     resp_t (*getStatus)   (struct motorIF_s *mtrDriver);
     resp_t (*setDrive)    (struct motorIF_s *mtrDriver, float target); // -1.0..+1.0, sign = direction
     resp_t (*setDir)      (struct motorIF_s *mtrDriver, mtrDriveDir_e dir);

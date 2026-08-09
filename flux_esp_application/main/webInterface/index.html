@@ -36,7 +36,7 @@
 
 <script>
     const POLL_MS    = 200;
-    const MODE_NAMES = { 0: 'Off', 1: 'Pos', 2: 'Open' };
+    const MODE_NAMES = { 0: 'OFF', 1: 'POS', 2: 'OPEN' };
 
     let initialized = false;
 
@@ -134,10 +134,18 @@
                 </div>
 
                 <div class="ctrl-item">
-                    <label>Speed</label>
+                    <label>PWM Drive</label>
                     <div class="speed-row">
-                        <input type="number" id="inp_spd_${prefix}" value="0" step="50" />
-                        <button onclick="sendSpeed('${prefix}')">Set</button>
+                        <input type="number" id="pwmSetpoint_${prefix}" value="0" step="0.1" />
+                        <button onclick="sendPwm('${prefix}')">Set</button>
+                    </div>
+                </div>
+
+                <div class="ctrl-item">
+                    <label>Pos Target</label>
+                    <div class="speed-row">
+                        <input type="number" id="posSetpoint_${prefix}" value="0" step="0.1" />
+                        <button onclick="sendPos('${prefix}')">Set</button>
                     </div>
                 </div>
 
@@ -211,8 +219,12 @@
         sendSet(`${prefix}.mode`, document.getElementById(`sel_mode_${prefix}`).value);
     }
 
-    function sendSpeed(prefix) {
-        sendSet(`${prefix}.speed`, document.getElementById(`inp_spd_${prefix}`).value);
+    function sendPwm(prefix) {
+        sendSet(`${prefix}.pwmSetpoint`, document.getElementById(`pwmSetpoint_${prefix}`).value);
+    }
+
+    function sendPos(prefix) {
+        sendSet(`${prefix}.posSetpoint`, document.getElementById(`posSetpoint_${prefix}`).value);
     }
 
     function sendRaw() {

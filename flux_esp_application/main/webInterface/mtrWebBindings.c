@@ -5,32 +5,37 @@
 /**
  * Getters — write a bare JSON value (no surrounding quotes for numbers)
  */
-static void get_pos(char *o, size_t n, void *ctx)
+static void getPos(char *o, size_t n, void *ctx)
 {
     snprintf(o, n, "%.2f", ((motorCtx_t *)ctx)->position);
 }
 
-static void get_enabled(char *o, size_t n, void *ctx)
+static void getEnabled(char *o, size_t n, void *ctx)
 {
     snprintf(o, n, "%s", ((motorCtx_t *)ctx)->enabled ? "true" : "false");
 }
 
-static void get_mode(char *o, size_t n, void *ctx)
+static void getMode(char *o, size_t n, void *ctx)
 {
     snprintf(o, n, "%d", (int)((motorCtx_t *)ctx)->ctrlMode);
 }
 
-static void get_cmd(char *o, size_t n, void *ctx)
+static void getPosSetpoint(char *o, size_t n, void *ctx)
 {
-    snprintf(o, n, "%d", (int)((motorCtx_t *)ctx)->cmd);
+    snprintf(o, n, "%.2f", (float)((motorCtx_t *)ctx)->posSetpoint);
 }
 
-static void get_dir(char *o, size_t n, void *ctx)
+static void getDriveSetpoint(char *o, size_t n, void *ctx)
 {
-    snprintf(o, n, "%d", (int)((motorCtx_t *)ctx)->dir);
+    snprintf(o, n, "%.2f", (float)((motorCtx_t *)ctx)->driveSetpoint);
 }
 
-static void get_state(char *o, size_t n, void *ctx)
+static void getDutyCmd(char *o, size_t n, void *ctx)
+{
+    snprintf(o, n, "%.2f", (float)((motorCtx_t *)ctx)->driveCmd);
+}
+
+static void getState(char *o, size_t n, void *ctx)
 {
     snprintf(o, n, "%d", (int)((motorCtx_t *)ctx)->mtrState);
 }
@@ -38,19 +43,24 @@ static void get_state(char *o, size_t n, void *ctx)
 /**
  * Setters — parse the raw query-string value
  */
-static void set_enable(const char *val, void *ctx)
+static void setEnable(const char *val, void *ctx)
 {
-    setMotorEnable((motorCtx_t *)ctx, strtol(val, NULL, 10) != 0);
+    setMotorEnable(*(uint8_t *)ctx, strtol(val, NULL, 10) != 0);
 }
 
-static void set_mode(const char *val, void *ctx)
+static void setMode(const char *val, void *ctx)
 {
-    setDriveMode((motorCtx_t *)ctx, (mtrDriveMode_e)strtol(val, NULL, 10));
+    setDriveMode(*(uint8_t *)ctx, (mtrDriveMode_e)strtol(val, NULL, 10));
 }
 
-static void set_pwm(const char *val, void *ctx)
+static void setPwm(const char *val, void *ctx)
 {
-    setDrivePwm((motorCtx_t *)ctx, (int32_t)strtol(val, NULL, 10));
+    setTargetPwm(*(uint8_t *)ctx, (float)strtof(val, NULL));
+}
+
+static void setPos(const char *val, void *ctx)
+{
+    setTargetPos(*(uint8_t *)ctx, (float)strtof(val, NULL));
 }
 
 /**
@@ -65,31 +75,37 @@ void motorCtrlRegisterWebBindings(webApp_t *web, motorCtrlCtx_t *mtrCtrl)
 
         /* Setup the Getter controls*/
         snprintf(key, sizeof(key), "mtr%d.pos", i);
-        webAppRegisterMonitor(web, key, get_pos, m);
+        webAppRegisterMonitor(web, key, getPos, m);
 
         snprintf(key, sizeof(key), "mtr%d.enabled", i);
-        webAppRegisterMonitor(web, key, get_enabled, m);
+        webAppRegisterMonitor(web, key, getEnabled, m);
 
         snprintf(key, sizeof(key), "mtr%d.mode", i);
-        webAppRegisterMonitor(web, key, get_mode, m);
+        webAppRegisterMonitor(web, key, getMode, m);
 
-        snprintf(key, sizeof(key), "mtr%d.cmd", i);
-        webAppRegisterMonitor(web, key, get_cmd, m);
+        snprintf(key, sizeof(key), "mtr%d.posSetpoint", i);
+        webAppRegisterMonitor(web, key, getPosSetpoint, m);
 
-        snprintf(key, sizeof(key), "mtr%d.dir", i);
-        webAppRegisterMonitor(web, key, get_dir, m);
+        snprintf(key, sizeof(key), "mtr%d.driveSetpoint", i);
+        webAppRegisterMonitor(web, key, getDriveSetpoint, m);
+
+        snprintf(key, sizeof(key), "mtr%d.dutyCmd", i);
+        webAppRegisterMonitor(web, key, getDutyCmd, m);
 
         snprintf(key, sizeof(key), "mtr%d.state", i);
-        webAppRegisterMonitor(web, key, get_state, m);
+        webAppRegisterMonitor(web, key, getState, m);
 
         /*Setup the Setter controls */
         snprintf(key, sizeof(key), "mtr%d.enable", i);
-        webAppRegisterControl(web, key, set_enable, m);
+        webAppRegisterControl(web, key, setEnable, &m->idx);
 
         snprintf(key, sizeof(key), "mtr%d.mode", i);
-        webAppRegisterControl(web, key, set_mode, m);
+        webAppRegisterControl(web, key, setMode, &m->idx);
 
-        snprintf(key, sizeof(key), "mtr%d.speed", i);
-        webAppRegisterControl(web, key, set_pwm, m);
+        snprintf(key, sizeof(key), "mtr%d.pwmSetpoint", i);
+        webAppRegisterControl(web, key, setPwm, &m->idx);
+
+        snprintf(key, sizeof(key), "mtr%d.posSetpoint", i);
+        webAppRegisterControl(web, key, setPos, &m->idx);
     }
 }
