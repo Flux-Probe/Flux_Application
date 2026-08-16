@@ -4,6 +4,7 @@
 #include <driver/gpio.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include "freertos/semphr.h"
 
 #include "as5600.h"
 #include "dummyFb.h"
@@ -14,6 +15,12 @@
 static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
 
 motorCtrlCtx_t *mtrCtx;
+SemaphoreHandle_t ctrlTaskSem;
+/* Held by motorControlTask for the duration of each full pass over
+ * ctx->mtrs[]. setLoopGains() takes it before writing, so a gains update
+ * blocks until the task is between cycles instead of applying mid-cycle.
+ */
+static SemaphoreHandle_t gainsMutex;
 
 // Default Values
 #define IN1_PIN 22
@@ -27,6 +34,12 @@ motorCtrlCtx_t *mtrCtx;
     if ((idx) >= MAX_MOTORS) {              \
         LOG_E("Invalid index provided");    \
         return;                             \
+    }                                       \
+
+#define CHECK_MTR_IDX_ERR(idx)              \
+    if ((idx) >= MAX_MOTORS) {              \
+        LOG_E("Invalid index provided");    \
+        return RESP_ERR;                    \
     }                                       \
 
 // ───── Motor ─────
@@ -75,6 +88,32 @@ void setTargetPos(uint8_t idx, float targetPos)
     motor->posSetpoint = targetPos;
 }
 
+#define CLEAR_ERRORS(idx)                       \
+    mtrCtx->mtrs[(idx)].pid->error      = 0;    \
+    mtrCtx->mtrs[(idx)].pid->integral   = 0;    \
+    mtrCtx->mtrs[(idx)].pid->prevError  = 0;    \
+
+resp_t setLoopGains(uint8_t idx, pidLoop_t gains)
+{
+    CHECK_MTR_IDX_ERR(idx);
+
+    /* Blocks until motorControlTask releases gainsMutex, i.e. until it
+     * finishes its current pass over all motors. */
+    BaseType_t semResp = xSemaphoreTake(gainsMutex, pdMS_TO_TICKS(500));
+    if (semResp != pdTRUE) {
+        LOG_E("Error when trying to set Loop Gains for mtr %d", idx);
+        return RESP_ERR;
+    }
+
+    mtrCtx->mtrs[idx].pid->kp = gains.kp;
+    mtrCtx->mtrs[idx].pid->ki = gains.ki;
+    mtrCtx->mtrs[idx].pid->kd = gains.kd;
+    CLEAR_ERRORS(idx);
+
+    xSemaphoreGive(gainsMutex);
+    return RESP_OK;
+}
+
 static float pidUpdate(pidLoop_t *pid, float target, float curr, float dt)
 {
     pid->error = target - curr;
@@ -86,7 +125,7 @@ static float pidUpdate(pidLoop_t *pid, float target, float curr, float dt)
     return output;
 }
 
-void positionControlLoop(motorCtx_t *mtr)
+static void positionControlLoop(motorCtx_t *mtr)
 {
     CHECK_PTR_RET(mtr);
     mtr->driveCmd = pidUpdate(mtr->pid, mtr->posSetpoint, mtr->position, FREQ_2HZ);
@@ -103,8 +142,12 @@ void motorControlTask(void *arg)
                                               ctx->mtrs[1].limits.lower, ctx->mtrs[1].limits.upper);
 
     while(1){
-        // TODO: Add a semaphore here to have this loop go at a certain rate
-        vTaskDelay(pdMS_TO_TICKS(FREQ_2HZ));
+        xSemaphoreTake(ctrlTaskSem, pdMS_TO_TICKS(FREQ_2HZ));
+
+        /* Held for the whole pass below so setLoopGains() can't land a
+         * partial update in the middle of iterating the motors. */
+        xSemaphoreTake(gainsMutex, portMAX_DELAY);
+
         for (int idx = 0; idx < ctx->numMotors; idx++) {
             /* RFI: Add a field in motorCtx to decimate the speed at which each
                motor is updated. */
@@ -143,6 +186,8 @@ void motorControlTask(void *arg)
 
             mtr->motorIF->setDrive(mtr->motorIF, mtr->driveCmd);
         }
+
+        xSemaphoreGive(gainsMutex);
     }
 }
 
@@ -244,7 +289,6 @@ resp_t motorInit(motorCtrlCtx_t *mtrCtrlCtx)
 };
 #endif
 
-
 resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrl)
 {
     CHECK_PTR_RET_ERR(mtrCtrl);
@@ -265,6 +309,20 @@ resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrl)
     }
 
     mtrCtx = mtrCtrl;
+
+    ctrlTaskSem = xSemaphoreCreateBinary();
+
+    if (ctrlTaskSem == NULL) {
+        LOG_E("Error creating motorCtrl semaphore");
+        return RESP_ERR;
+    }
+
+    gainsMutex = xSemaphoreCreateMutex();
+
+    if (gainsMutex == NULL) {
+        LOG_E("Error creating gains mutex");
+        return RESP_ERR;
+    }
 
     // Create task for control.
     LOG_I("Creating motor ctrl task");

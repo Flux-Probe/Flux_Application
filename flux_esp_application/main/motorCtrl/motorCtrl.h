@@ -89,6 +89,8 @@ void setMotorEnable(uint8_t idx, bool enable);
 void setDriveMode(uint8_t idx, mtrDriveMode_e setMode);
 void setTargetPwm(uint8_t idx, float setDrive);
 void setTargetPos(uint8_t idx, float setDrive);
+// Update PID loop gains for a motor; blocks until motorControlTask is between cycles
+resp_t setLoopGains(uint8_t idx, pidLoop_t gains);
 
 resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx);
 
