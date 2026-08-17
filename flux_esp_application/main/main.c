@@ -100,6 +100,22 @@ static pca9685Dev_t *pcaDev;
 static motorIF_t *mtrIF[MAX_MOTORS];
 static feedback_t *fbIF[MAX_MOTORS];
 
+static pidLoop_t dfltPids[MAX_MOTORS] = {
+    [MOTOR_1] = {
+        .kp     = 0.6f,
+        .ki     = 0.4f,
+        .kd     = 0.5f,
+        .minOut = -1.0f,
+        .maxOut = 1.0f,
+    },
+    [MOTOR_2] = {
+        .kp     = 0.1f,
+        .ki     = 0.2f,
+        .kd     = 0.3f,
+        .minOut = -1.0f,
+        .maxOut = 1.0f,
+    },
+};
 
 resp_t initFlash(void)
 {
@@ -233,14 +249,19 @@ static resp_t initMotor_FbDrivers(motorCtrlCtx_t *motorCtrl)
         mtrIF[i] = createMtrDriverIF_PCA9685(mtrDrvPCA[i]);
         CHECK_PTR_RET_ERR(mtrIF[i], "Error creating motorIF %d for PCA", i);
 
-        fbIF[i] = dummyFbInit(1000);
+        fbIF[i] = dummyFbInit(10 + 10 * i);
         CHECK_PTR_RET_ERR(fbIF[i], "Error when initializing Fb ptr %d", i);
 
-        motorCtrl->mtrs[i].motorIF = mtrIF[i];
-        motorCtrl->mtrs[i].fb = fbIF[i];
+        motorCtrl->mtrs[i].motorIF      = mtrIF[i];
+        motorCtrl->mtrs[i].fb           = fbIF[i];
         motorCtrl->mtrs[i].limits.lower = 0;
         motorCtrl->mtrs[i].limits.upper = 1000;
-        motorCtrl->mtrs[i].idx = i;
+        motorCtrl->mtrs[i].idx          = i;
+        motorCtrl->mtrs[i].pid.kp       = dfltPids[i].kp;
+        motorCtrl->mtrs[i].pid.ki       = dfltPids[i].ki;
+        motorCtrl->mtrs[i].pid.kd       = dfltPids[i].kd;
+        motorCtrl->mtrs[i].pid.minOut   = dfltPids[i].minOut;
+        motorCtrl->mtrs[i].pid.maxOut   = dfltPids[i].maxOut;
     }
 
     motorCtrl->numMotors = MAX_MOTORS;

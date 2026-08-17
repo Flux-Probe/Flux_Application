@@ -42,6 +42,11 @@ static SemaphoreHandle_t gainsMutex;
         return RESP_ERR;                    \
     }                                       \
 
+#define CLEAR_ERRORS(idx)                      \
+    mtrCtx->mtrs[(idx)].pid.error      = 0;    \
+    mtrCtx->mtrs[(idx)].pid.integral   = 0;    \
+    mtrCtx->mtrs[(idx)].pid.prevError  = 0;    \
+
 // ───── Motor ─────
 void setMotorEnable(uint8_t idx, bool enable)
 {
@@ -63,6 +68,10 @@ void setDriveMode(uint8_t idx, mtrDriveMode_e setMode)
     motorCtx_t *motor = &mtrCtx->mtrs[idx];
     if (setMode == MODE_OFF) {
         setTargetPwm(idx, 0);
+    }
+
+    if (setMode != motor->ctrlMode) {
+        CLEAR_ERRORS(idx);
     }
 
     motor->ctrlMode = setMode;
@@ -88,11 +97,6 @@ void setTargetPos(uint8_t idx, float targetPos)
     motor->posSetpoint = targetPos;
 }
 
-#define CLEAR_ERRORS(idx)                       \
-    mtrCtx->mtrs[(idx)].pid->error      = 0;    \
-    mtrCtx->mtrs[(idx)].pid->integral   = 0;    \
-    mtrCtx->mtrs[(idx)].pid->prevError  = 0;    \
-
 resp_t setLoopGains(uint8_t idx, pidLoop_t gains)
 {
     CHECK_MTR_IDX_ERR(idx);
@@ -105,9 +109,11 @@ resp_t setLoopGains(uint8_t idx, pidLoop_t gains)
         return RESP_ERR;
     }
 
-    mtrCtx->mtrs[idx].pid->kp = gains.kp;
-    mtrCtx->mtrs[idx].pid->ki = gains.ki;
-    mtrCtx->mtrs[idx].pid->kd = gains.kd;
+    mtrCtx->mtrs[idx].pid.kp = gains.kp;
+    mtrCtx->mtrs[idx].pid.ki = gains.ki;
+    mtrCtx->mtrs[idx].pid.kd = gains.kd;
+    mtrCtx->mtrs[idx].pid.minOut = gains.minOut;
+    mtrCtx->mtrs[idx].pid.maxOut = gains.maxOut;
     CLEAR_ERRORS(idx);
 
     xSemaphoreGive(gainsMutex);
@@ -128,7 +134,7 @@ static float pidUpdate(pidLoop_t *pid, float target, float curr, float dt)
 static void positionControlLoop(motorCtx_t *mtr)
 {
     CHECK_PTR_RET(mtr);
-    mtr->driveCmd = pidUpdate(mtr->pid, mtr->posSetpoint, mtr->position, FREQ_2HZ);
+    mtr->driveCmd = pidUpdate(&mtr->pid, mtr->posSetpoint, mtr->position, FREQ_2HZ);
 }
 
 // ----------- Control Task -----------
@@ -182,6 +188,11 @@ void motorControlTask(void *arg)
             default:
                 LOG_E("Invalid command mode. %d", mtr->ctrlMode);
                 break;
+            }
+
+            if (!mtr->enabled) {
+                mtr->ctrlMode = MODE_OFF;
+                mtr->driveCmd = 0.0f;
             }
 
             mtr->motorIF->setDrive(mtr->motorIF, mtr->driveCmd);
@@ -304,8 +315,8 @@ resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrl)
             return RESP_ERR;
         }
 
-        mtrCtrl->mtrs[MOTOR_1].mtrState = STATE_OPERATIONAL;
-        mtrCtrl->mtrs[MOTOR_1].ctrlLoop = positionControlLoop;
+        mtrCtrl->mtrs[i].mtrState = STATE_OPERATIONAL;
+        mtrCtrl->mtrs[i].ctrlLoop = positionControlLoop;
     }
 
     mtrCtx = mtrCtrl;

@@ -115,38 +115,53 @@
         card.innerHTML = `
             <div class="card-title">${prefix} &mdash; Controls</div>
             <div class="ctrl-grid">
+                <div class="ctrl-row">
+                    <div class="ctrl-item">
+                        <label>Enable</label>
+                        <button class="toggle-btn disabled"
+                                id="btn_en_${prefix}"
+                                data-enabled="0"
+                                onclick="toggleEnable('${prefix}')">OFF</button>
+                    </div>
 
-                <div class="ctrl-item">
-                    <label>Enable</label>
-                    <button class="toggle-btn disabled"
-                            id="btn_en_${prefix}"
-                            data-enabled="0"
-                            onclick="toggleEnable('${prefix}')">OFF</button>
+                    <div class="ctrl-item">
+                        <label>Mode</label>
+                        <select id="sel_mode_${prefix}" onchange="sendMode('${prefix}')">
+                            <option value="0">Off</option>
+                            <option value="1">Pos</option>
+                            <option value="2">Open</option>
+                        </select>
+                    </div>
                 </div>
 
-                <div class="ctrl-item">
-                    <label>Mode</label>
-                    <select id="sel_mode_${prefix}" onchange="sendMode('${prefix}')">
-                        <option value="0">Off</option>
-                        <option value="1">Pos</option>
-                        <option value="2">Open</option>
-                    </select>
-                </div>
-
-                <div class="ctrl-item">
+                <div class="ctrl-item full">
                     <label>PWM Drive</label>
                     <div class="speed-row">
                         <input type="number" id="pwmSetpoint_${prefix}" value="0" step="0.1" />
-                        <button onclick="sendPwm('${prefix}')">Set</button>
+                        <button onclick="sendPwm('${prefix}')">Set PWM Target</button>
                     </div>
                 </div>
 
-                <div class="ctrl-item">
+                <div class="ctrl-item full">
                     <label>Pos Target</label>
                     <div class="speed-row">
                         <input type="number" id="posSetpoint_${prefix}" value="0" step="0.1" />
-                        <button onclick="sendPos('${prefix}')">Set</button>
+                        <button onclick="sendPos('${prefix}')">Set Position Target</button>
                     </div>
+                </div>
+
+                <div class="ctrl-item full">
+                    <label>PID Gains (Kp, Ki, Kd)</label>
+                    <div class="speed-row">
+                        <input type="number" id="kp_${prefix}" placeholder="Kp" step="0.01" />
+                        <input type="number" id="ki_${prefix}" placeholder="Ki" step="0.01" />
+                        <input type="number" id="kd_${prefix}" placeholder="Kd" step="0.01" />
+                    </div>
+                    <div class="speed-row">
+                        <input type="number" id="minOut_${prefix}" placeholder="Min Out" step="0.01" />
+                        <input type="number" id="maxOut_${prefix}" placeholder="Max Out" step="0.01" />
+                    </div>
+                    <button onclick="sendGains('${prefix}')">Set PID Gains</button>
                 </div>
 
             </div>`;
@@ -198,6 +213,24 @@
         }
     }
 
+    function populateInitialData(data) {
+        // Sync control widgets (skip if the element has focus — user may be editing)
+        for (const key of Object.keys(data)) {
+            const dot    = key.indexOf('.');
+            if (dot < 0) continue;
+            const prefix = key.slice(0, dot);
+            const sub    = key.slice(dot + 1);
+
+            if (sub === 'kp' || sub === 'ki' || sub === 'kd'
+             || sub === 'minOut' || sub === 'maxOut') {
+                const el = document.getElementById(`${sub}_${prefix}`);
+                if (el && document.activeElement !== el)
+                    el.value = String(data[key]);
+            }
+        }
+    }
+
+
     // ── Control actions ──────────────────────────────────────────────────────────
 
     function setEnableBtn(prefix, enabled) {
@@ -225,6 +258,15 @@
 
     function sendPos(prefix) {
         sendSet(`${prefix}.posSetpoint`, document.getElementById(`posSetpoint_${prefix}`).value);
+    }
+
+    function sendGains(prefix) {
+        const kp   = document.getElementById(`kp_${prefix}`).value || 0;
+        const ki   = document.getElementById(`ki_${prefix}`).value || 0;
+        const kd   = document.getElementById(`kd_${prefix}`).value || 0;
+        const minO = document.getElementById(`minOut_${prefix}`).value || 0;
+        const maxO = document.getElementById(`maxOut_${prefix}`).value || 0;
+        sendSet(`${prefix}.gains`, `${kp},${ki},${kd},${minO},${maxO}`);
     }
 
     function sendRaw() {
@@ -255,6 +297,7 @@
 
             if (!initialized) {
                 buildUI(groupByPrefix(data));
+                populateInitialData(data);
                 initialized = true;
             }
             syncValues(data);
