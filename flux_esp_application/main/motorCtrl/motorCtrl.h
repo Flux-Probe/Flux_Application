@@ -72,7 +72,7 @@ typedef struct motorCtx_s {
     motorIF_t       *motorIF;
     feedback_t      *fb;
     void (*ctrlLoop) (struct motorCtx_s *motor);
-    pidLoop_t *pid;
+    pidLoop_t       pid;
 } motorCtx_t;
 
 typedef struct motorCtrlCtx_s{

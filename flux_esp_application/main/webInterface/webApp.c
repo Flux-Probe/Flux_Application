@@ -1,6 +1,7 @@
 #include "webApp.h"
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 #define TAG           "WEBAPP"
 #define DBG dbgFlag
@@ -16,6 +17,25 @@ extern const char style_css_end[]    asm("_binary_style_css_end");
 // ── Helpers ───────────────────────────────────────────────────────────────────
 static char *paramBuf;
 
+/* httpd_query_key_value() hands back the raw query substring, no percent
+ * decoding — the JS side runs values through encodeURIComponent(), so any
+ * reserved character (','  etc.) arrives here as "%2C". Decode in place. */
+static void urlDecode(char *s)
+{
+    char *r = s, *w = s;
+    while (*r) {
+        if (r[0] == '%' && isxdigit((unsigned char)r[1]) && isxdigit((unsigned char)r[2])) {
+            char hex[3] = { r[1], r[2], '\0' };
+            *w++ = (char)strtol(hex, NULL, 16);
+            r += 3;
+        }
+        else {
+            *w++ = *r++;
+        }
+    }
+    *w = '\0';
+}
+
 static resp_t getUriParam(httpd_req_t *req, char *out, size_t outLen, const char *key)
 {
     int len = httpd_req_get_url_query_len(req);
@@ -23,8 +43,10 @@ static resp_t getUriParam(httpd_req_t *req, char *out, size_t outLen, const char
 
     resp_t sts = RESP_ERR;
     if (httpd_req_get_url_query_str(req, paramBuf, len + 1) == ESP_OK) {
-        if (httpd_query_key_value(paramBuf, key, out, outLen) == ESP_OK)
+        if (httpd_query_key_value(paramBuf, key, out, outLen) == ESP_OK) {
+            urlDecode(out);
             sts = RESP_OK;
+        }
     }
 
     return sts;
