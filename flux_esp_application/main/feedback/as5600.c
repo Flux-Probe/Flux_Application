@@ -25,7 +25,6 @@ typedef struct {
     float    angle;
     uint8_t  readCount;
     uint8_t  writeData[MAX_WRITE_SIZE];
-    uint32_t i2cPort;
     uint32_t readTimeout;
 } as5600PrivCfg_t;
 
@@ -43,7 +42,7 @@ static resp_t readAS5600Raw(feedback_t *fb, float *rawVal)
 
     if (err != ESP_OK) {
         cfg->rawData = 0xFFFFFFFF; //Set finalized value to invalid. Prolly make a const
-        LOG_E("I2C read failed: %s|%d", esp_err_to_name(err), cfg->i2cPort);
+        LOG_E("I2C read failed: %s", esp_err_to_name(err));
         sts = RESP_ERR;
     }
     else {
@@ -91,20 +90,23 @@ static resp_t i2cConfigure(as5600PrivCfg_t *cfg, as5600_cfg_t pubCfg)
 {
     /*TODO: Likely throw the pins and ports into a "privCfg" struct since we
             will likely have multiple of these
-    // */
-    cfg->i2cCfg.masterCfg.i2c_port = pubCfg.i2cCfg.masterCfg.i2c_port;
-    cfg->i2cCfg.masterCfg.sda_io_num = pubCfg.i2cCfg.masterCfg.sda_io_num;
-    cfg->i2cCfg.masterCfg.scl_io_num = pubCfg.i2cCfg.masterCfg.scl_io_num;
-    cfg->i2cCfg.masterCfg.clk_source = pubCfg.i2cCfg.masterCfg.clk_source;
+    */
 
-    ESP_ERROR_CHECK(i2c_new_master_bus(&cfg->i2cCfg.masterCfg, &cfg->i2cBus));
+    esp_err_t err = i2c_master_bus_add_device(cfg->i2cBus, &pubCfg.devCfg,
+                                             &cfg->i2cDev);
 
-    cfg->i2cCfg.devCfg.dev_addr_length  = pubCfg.i2cCfg.devCfg.dev_addr_length;
-    cfg->i2cCfg.devCfg.device_address   = pubCfg.i2cCfg.devCfg.device_address;
-    cfg->i2cCfg.devCfg.scl_speed_hz     = pubCfg.i2cCfg.devCfg.scl_speed_hz;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "i2c_master_bus_add_device failed: %s", esp_err_to_name(err));
+        return RESP_ERR;
+    }
 
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(cfg->i2cBus, &cfg->i2cCfg.devCfg,
-                                              &cfg->i2cDev));
+    // Probe to confirm device is reachable before returning a valid handle
+    err = i2c_master_probe(cfg->i2cBus, pubCfg.devCfg.device_address, 100);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "As5600 not found at 0x%02X - check wiring, address pins, and pull-ups",
+                 pubCfg.devCfg.device_address);
+        return RESP_ERR;
+    }
 
     // cfg->readTimeout = I2C_READ_TIMEOUT / portTICK_PERIOD_MS;
     // cfg->writeData[0] = ANGLE_MSB;
@@ -112,7 +114,6 @@ static resp_t i2cConfigure(as5600PrivCfg_t *cfg, as5600_cfg_t pubCfg)
 
     return RESP_OK;
 }
-
 
 feedback_t *as5600Init(as5600_cfg_t cfg)
 {
@@ -122,17 +123,22 @@ feedback_t *as5600Init(as5600_cfg_t cfg)
     esp_log_level_set(TAG, cfg.dbgFlag); // Setting debug
 
     as5600PrivCfg_t *privCtx = (as5600PrivCfg_t *) calloc(1, sizeof(as5600PrivCfg_t));
-    // privCtx->i2cCfg = cfg.i2cCfg;
 
-    privCtx->writeData[0] = cfg.writeData[0];
-    privCtx->writeData[1] = cfg.writeData[1];
-    privCtx->readTimeout = cfg.readTimeout;
-    privCtx->dbgFlag = cfg.dbgFlag;
-    privCtx->i2cPort = cfg.i2cCfg.masterCfg.i2c_port;
+    privCtx->writeData[0]   = cfg.writeData[0];
+    privCtx->writeData[1]   = cfg.writeData[1];
+    privCtx->readTimeout    = cfg.readTimeout;
+    privCtx->dbgFlag        = cfg.dbgFlag;
+    privCtx->i2cBus         = cfg.i2cBus;
 
-    resp_t resp = i2cConfigure(privCtx, cfg);
-    LOG_W("I2C Cfg: %d,%d", privCtx->i2cCfg.masterCfg.i2c_port, privCtx->i2cCfg.devCfg.device_address);
-    RETURN_VAL_IF_ERR(resp, NULL);
+    if (i2cConfigure(privCtx, cfg) != RESP_OK) {
+        LOG_W("I2C Cfg ERR: %d", cfg.devCfg.device_address);
+        if (privCtx->i2cDev) {
+            i2c_master_bus_rm_device(privCtx->i2cDev);
+        }
+        free(privCtx);
+        free(as5600Fb);
+        return NULL;
+    }
 
     as5600Fb->privCtx = (void *)privCtx;
     as5600Fb->readRawData = readAS5600Raw;

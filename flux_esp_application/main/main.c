@@ -51,10 +51,10 @@ static max31865_cfg_t maxCfg = {
  *
  ****************************************************/
 #define I2C_MAX_PORTS 2
-#define I2C_1_SDA_PIN 21
-#define I2C_1_SCL_PIN 22
-#define I2C_2_SDA_PIN 0
-#define I2C_2_SCL_PIN 0
+#define I2C_1_SDA_PIN 4
+#define I2C_1_SCL_PIN 17
+#define I2C_2_SDA_PIN 32
+#define I2C_2_SCL_PIN 33
 
 typedef struct {
     i2c_master_bus_config_t busCfg;
@@ -81,7 +81,7 @@ static i2cBus_t i2cMasterCfg[] = {
             .clk_source     = I2C_CLK_SRC_DEFAULT,
 
         },
-        .enable = false,
+        .enable = true,
     },
 };
 
@@ -116,6 +116,26 @@ static pidLoop_t dfltPids[MAX_MOTORS] = {
         .maxOut = 1.0f,
     },
 };
+
+static as5600_cfg_t as5600Cfgs[MAX_MOTORS] = {
+    [MOTOR_1] = {
+        .devCfg.dev_addr_length    = I2C_ADDR_BIT_LEN_7,
+        .devCfg.device_address     = AS5600_ADDR,
+        .devCfg.scl_speed_hz       = 400000,
+        .readTimeout  = I2C_READ_TIMEOUT / portTICK_PERIOD_MS,
+        .writeData[0] = ANGLE_MSB,
+        .writeData[1] = ANGLE_MSB >> 8,
+    },
+    [MOTOR_2] = {
+        .devCfg.dev_addr_length    = I2C_ADDR_BIT_LEN_7,
+        .devCfg.device_address     = AS5600_ADDR,
+        .devCfg.scl_speed_hz       = 400000,
+        .readTimeout  = I2C_READ_TIMEOUT / portTICK_PERIOD_MS,
+        .writeData[0] = ANGLE_MSB,
+        .writeData[1] = ANGLE_MSB >> 8,
+    },
+};
+
 
 resp_t initFlash(void)
 {
@@ -249,7 +269,13 @@ static resp_t initMotor_FbDrivers(motorCtrlCtx_t *motorCtrl)
         mtrIF[i] = createMtrDriverIF_PCA9685(mtrDrvPCA[i]);
         CHECK_PTR_RET_ERR(mtrIF[i], "Error creating motorIF %d for PCA", i);
 
-        fbIF[i] = dummyFbInit(10 + 10 * i);
+        if (i == MOTOR_1) {
+            as5600Cfgs[i].i2cBus = i2cMasterCfg[1].bus;
+            fbIF[i] = as5600Init(as5600Cfgs[i]);
+        }
+        else {
+            fbIF[i] = dummyFbInit(10 + 10 * i);
+        }
         CHECK_PTR_RET_ERR(fbIF[i], "Error when initializing Fb ptr %d", i);
 
         motorCtrl->mtrs[i].motorIF      = mtrIF[i];
@@ -297,12 +323,12 @@ void app_main(void)
 
     motorCtrlRegisterWebBindings(&espIF.webApp, &espIF.motorCtrl);
 
-    espIF.rtdSensor = max31865Init(maxCfg);
+    // espIF.rtdSensor = max31865Init(maxCfg);
 
-    if (!espIF.rtdSensor) {
-        LOG_E("Error when initializing RTD module");
-        return;
-    }
+    // if (!espIF.rtdSensor) {
+    //     LOG_E("Error when initializing RTD module");
+    //     return;
+    // }
 
     xTaskCreate(testTask, "testTask", 4096, &espIF, 10, NULL);
 }
