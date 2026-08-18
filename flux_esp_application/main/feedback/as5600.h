@@ -32,9 +32,9 @@ typedef struct {
 
 typedef struct {
     uint16_t dbgFlag;
-    i2cCfg_t i2cCfg;
     uint8_t  writeData[MAX_WRITE_SIZE];
-    uint32_t i2cPort;
+    i2c_master_bus_handle_t i2cBus;
+    i2c_device_config_t     devCfg;
     uint32_t readTimeout;
 } as5600_cfg_t;
 
