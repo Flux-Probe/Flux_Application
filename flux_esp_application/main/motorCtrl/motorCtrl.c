@@ -42,6 +42,11 @@ static SemaphoreHandle_t gainsMutex;
         return RESP_ERR;                    \
     }                                       \
 
+/* A wedged I2C bus can make every feedback-read/drive-write fail every cycle
+ * without ever fully hanging. Latch the motor to STATE_FAILED after this many
+ * successive failures rather than retrying forever against a dead bus. */
+#define MAX_SUCCESSIVE_IO_FAILS 5
+
 #define CLEAR_ERRORS(idx)                      \
     mtrCtx->mtrs[(idx)].pid.error      = 0;    \
     mtrCtx->mtrs[(idx)].pid.integral   = 0;    \
@@ -55,6 +60,13 @@ void setMotorEnable(uint8_t idx, bool enable)
     resp_t sts = motor->motorIF->enable(motor->motorIF);
     if (sts == RESP_OK) {
         motor->enabled = enable;
+        /* Re-enabling is the explicit operator action that clears a fault
+         * latched by mtrFailSafe() - give it a fresh start. */
+        if (enable) {
+            motor->mtrState       = STATE_OPERATIONAL;
+            motor->fbFailCount    = 0;
+            motor->driveFailCount = 0;
+        }
     }
     else {
         motor->ctrlMode = MODE_OFF;
@@ -123,7 +135,7 @@ resp_t setLoopGains(uint8_t idx, pidLoop_t gains)
 static float pidUpdate(pidLoop_t *pid, float target, float curr, float dt)
 {
     pid->error = target - curr;
-    pid->integral += pid->error * dt;
+    pid->integral += pid->error * (dt / 1000);
 
     float output = (pid->kp * pid->error) + (pid->ki * pid->integral);
     /* Clamp the PWM output depending on the motor */
@@ -134,7 +146,23 @@ static float pidUpdate(pidLoop_t *pid, float target, float curr, float dt)
 static void positionControlLoop(motorCtx_t *mtr)
 {
     CHECK_PTR_RET(mtr);
-    mtr->driveCmd = pidUpdate(&mtr->pid, mtr->posSetpoint, mtr->position, FREQ_2HZ);
+    mtr->driveCmd = pidUpdate(&mtr->pid, mtr->posSetpoint, mtr->position, FREQ_125HZ);
+}
+
+/* Latches a motor to a safe, inert state after too many successive I/O
+ * failures rather than continuing to drive/read a dead bus every cycle.
+ * Cleared only by an explicit setMotorEnable(idx, true) call. */
+static void mtrFailSafe(motorCtx_t *mtr, const char *reason)
+{
+    if (mtr->mtrState == STATE_FAILED) {
+        return; // already latched
+    }
+    LOG_E("Motor %d: %u successive %s failures - forcing STATE_FAILED",
+          mtr->idx, MAX_SUCCESSIVE_IO_FAILS, reason);
+    mtr->mtrState = STATE_FAILED;
+    mtr->ctrlMode = MODE_OFF;
+    mtr->enabled  = false;
+    mtr->driveCmd = 0.0f;
 }
 
 // ----------- Control Task -----------
@@ -148,7 +176,7 @@ void motorControlTask(void *arg)
                                               ctx->mtrs[1].limits.lower, ctx->mtrs[1].limits.upper);
 
     while(1){
-        xSemaphoreTake(ctrlTaskSem, pdMS_TO_TICKS(FREQ_2HZ));
+        xSemaphoreTake(ctrlTaskSem, pdMS_TO_TICKS(FREQ_125HZ));
 
         /* Held for the whole pass below so setLoopGains() can't land a
          * partial update in the middle of iterating the motors. */
@@ -165,13 +193,14 @@ void motorControlTask(void *arg)
             sts = mtr->fb->readData(mtr->fb, &mtr->position);
 
             if (sts != RESP_OK){
-                /* RFI: Add a counter here. If we get an error from fb. We dont want to fail
-                * immediately, instead, skip this current loop (Put the drive to 0), increment the
-                * counter, if there is successive counts without feedback then fail.
-                *
-                * 2 counters. Successive fails and total fb read fails
-                */
-                LOG_W("ERR reading data from fb");
+                mtr->fbFailCount++;
+                LOG_W("ERR reading data from fb (%u/%u)", mtr->fbFailCount, MAX_SUCCESSIVE_IO_FAILS);
+                if (mtr->fbFailCount >= MAX_SUCCESSIVE_IO_FAILS) {
+                    mtrFailSafe(mtr, "feedback-read");
+                }
+            }
+            else {
+                mtr->fbFailCount = 0;
             }
 
             switch (mtr->ctrlMode)
@@ -195,7 +224,17 @@ void motorControlTask(void *arg)
                 mtr->driveCmd = 0.0f;
             }
 
-            mtr->motorIF->setDrive(mtr->motorIF, mtr->driveCmd);
+            resp_t driveSts = mtr->motorIF->setDrive(mtr->motorIF, mtr->driveCmd);
+            if (driveSts != RESP_OK) {
+                mtr->driveFailCount++;
+                LOG_W("ERR writing drive cmd (%u/%u)", mtr->driveFailCount, MAX_SUCCESSIVE_IO_FAILS);
+                if (mtr->driveFailCount >= MAX_SUCCESSIVE_IO_FAILS) {
+                    mtrFailSafe(mtr, "drive-write");
+                }
+            }
+            else {
+                mtr->driveFailCount = 0;
+            }
         }
 
         xSemaphoreGive(gainsMutex);

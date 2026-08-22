@@ -29,6 +29,19 @@ typedef struct {
 } as5600PrivCfg_t;
 
 // ───────── AS5600 ─────────
+
+/* A transaction that times out can leave the bus's internal state machine
+ * stuck "busy", which hangs every subsequent transaction until something
+ * clears it. Reset after any failure so one glitch doesn't wedge the bus
+ * for good (mirrors pca9685RecoverBus() in motorDrivers/pca9685.c). */
+static void as5600RecoverBus(as5600PrivCfg_t *cfg)
+{
+    esp_err_t err = i2c_master_bus_reset(cfg->i2cBus);
+    if (err != ESP_OK) {
+        LOG_E("I2C bus reset failed: %s", esp_err_to_name(err));
+    }
+}
+
 static resp_t readAS5600Raw(feedback_t *fb, float *rawVal)
 {
     CHECK_PTR_RET_ERR(fb);
@@ -43,6 +56,7 @@ static resp_t readAS5600Raw(feedback_t *fb, float *rawVal)
     if (err != ESP_OK) {
         cfg->rawData = 0xFFFFFFFF; //Set finalized value to invalid. Prolly make a const
         LOG_E("I2C read failed: %s", esp_err_to_name(err));
+        as5600RecoverBus(cfg);
         sts = RESP_ERR;
     }
     else {
