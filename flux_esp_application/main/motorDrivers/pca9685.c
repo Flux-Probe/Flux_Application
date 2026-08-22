@@ -35,12 +35,25 @@ struct pca9685Dev_s {
 
 // ───────── Internal helpers ─────────
 
+/* A transaction that times out can leave the bus's internal state machine
+ * stuck "busy", which hangs every subsequent transaction until something
+ * clears it. Reset after any failure so one glitch doesn't wedge the bus
+ * for good. */
+static void pca9685RecoverBus(pca9685Dev_t *dev)
+{
+    esp_err_t err = i2c_master_bus_reset(dev->i2cBus);
+    if (err != ESP_OK) {
+        LOG_E("I2C bus reset failed: %s", esp_err_to_name(err));
+    }
+}
+
 static resp_t pca9685WriteReg(pca9685Dev_t *dev, uint8_t reg, uint8_t val)
 {
     uint8_t buf[2] = { reg, val };
     esp_err_t err = i2c_master_transmit(dev->i2cDev, buf, sizeof(buf), I2C_TIMEOUT_MS);
     if (err != ESP_OK) {
         LOG_E("Write reg 0x%02X failed: %s", reg, esp_err_to_name(err));
+        pca9685RecoverBus(dev);
         return RESP_ERR;
     }
     return RESP_OK;
@@ -51,6 +64,7 @@ static resp_t pca9685ReadReg(pca9685Dev_t *dev, uint8_t reg, uint8_t *val)
     esp_err_t err = i2c_master_transmit_receive(dev->i2cDev, &reg, 1, val, 1, I2C_TIMEOUT_MS);
     if (err != ESP_OK) {
         LOG_E("Read reg 0x%02X failed: %s", reg, esp_err_to_name(err));
+        pca9685RecoverBus(dev);
         return RESP_ERR;
     }
     return RESP_OK;
@@ -90,6 +104,7 @@ static resp_t pca9685SetChannel(pca9685Dev_t *dev, uint8_t channel, uint16_t onT
     esp_err_t err = i2c_master_transmit(dev->i2cDev, buf, sizeof(buf), I2C_TIMEOUT_MS);
     if (err != ESP_OK) {
         LOG_E("Set channel %u failed: %s", channel, esp_err_to_name(err));
+        pca9685RecoverBus(dev);
         return RESP_ERR;
     }
     return RESP_OK;

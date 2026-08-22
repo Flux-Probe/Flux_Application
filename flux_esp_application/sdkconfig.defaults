@@ -19,3 +19,16 @@ CONFIG_LOG_MAXIMUM_LEVEL=5
 # so its ISR/HAL code doesn't need to live in IRAM. Frees ~5KB of IRAM.
 CONFIG_SPI_MASTER_ISR_IN_IRAM=n
 CONFIG_SPI_SLAVE_ISR_IN_IRAM=n
+
+# A wedged I2C bus can hang motorControlTask indefinitely inside the driver's
+# busy-wait. Panicking on watchdog timeout turns that silent freeze (motors
+# left running at their last commanded duty forever) into a bounded reboot
+# into the safe all-off boot state instead.
+
+# Built-in single-app table's 1MB factory partition is no longer big enough
+# for this image (verbose logging + BLE + wifi + https server). 2MB flash has
+# ~900KB of headroom to spare, so grow factory into a custom table instead.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+CONFIG_FREERTOS_HZ=1000

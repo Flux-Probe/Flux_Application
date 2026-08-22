@@ -11,6 +11,7 @@
 #define FREQ_25HZ 40
 #define FREQ_1HZ  1000
 #define FREQ_2HZ  500
+#define FREQ_125HZ 8
 
 enum {
     MOTOR_1,
@@ -57,6 +58,8 @@ typedef struct motorCtx_s {
     uint8_t         idx;
     bool            enabled;
     mtrDriveState_e mtrState;
+    uint8_t         fbFailCount;     // successive feedback-read I/O failures
+    uint8_t         driveFailCount;  // successive drive-write I/O failures
 
     /* Control Loop */
     mtrDriveMode_e  ctrlMode;

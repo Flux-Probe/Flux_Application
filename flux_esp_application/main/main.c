@@ -24,7 +24,7 @@ static uint16_t dbgFlag = DBG_INFO | DBG_ERROR;
 static int logLvl = ESP_LOG_DEBUG;
 
 #define MAX31865_CLK_PIN        18
-#define MAX31865_MISO_PIN       19
+#define MAX31865_MISO_PIN       35
 #define MAX31865_MOSI_PIN       23
 #define MAX31865_CS_1_PIN       26
 #define MAX31865_DRDY_PIN       25
@@ -51,7 +51,7 @@ static max31865_cfg_t maxCfg = {
  *
  ****************************************************/
 #define I2C_MAX_PORTS 2
-#define I2C_1_SDA_PIN 4
+#define I2C_1_SDA_PIN 15
 #define I2C_1_SCL_PIN 17
 #define I2C_2_SDA_PIN 32
 #define I2C_2_SCL_PIN 33
@@ -69,7 +69,8 @@ static i2cBus_t i2cMasterCfg[] = {
             .sda_io_num     = I2C_1_SDA_PIN,
             .scl_io_num     = I2C_1_SCL_PIN,
             .clk_source     = I2C_CLK_SRC_DEFAULT,
-            // .flags.enable_internal_pullup = 1,
+            .glitch_ignore_cnt = 7,
+            .flags.enable_internal_pullup = 1,
         },
         .enable = true,
     },
@@ -79,7 +80,8 @@ static i2cBus_t i2cMasterCfg[] = {
             .sda_io_num     = I2C_2_SDA_PIN,
             .scl_io_num     = I2C_2_SCL_PIN,
             .clk_source     = I2C_CLK_SRC_DEFAULT,
-
+            .glitch_ignore_cnt = 7,
+            .flags.enable_internal_pullup = 1,
         },
         .enable = true,
     },
@@ -102,37 +104,37 @@ static feedback_t *fbIF[MAX_MOTORS];
 
 static pidLoop_t dfltPids[MAX_MOTORS] = {
     [MOTOR_1] = {
-        .kp     = 0.6f,
-        .ki     = 0.4f,
-        .kd     = 0.5f,
-        .minOut = -1.0f,
-        .maxOut = 1.0f,
+        .kp     =  0.01f,
+        .ki     =  0.0f,
+        .kd     =  0.0f,
+        .minOut = -0.4f,
+        .maxOut =  0.4f,
     },
     [MOTOR_2] = {
-        .kp     = 0.1f,
-        .ki     = 0.2f,
-        .kd     = 0.3f,
-        .minOut = -1.0f,
-        .maxOut = 1.0f,
+        .kp     =  0.01f,
+        .ki     =  0.0f,
+        .kd     =  0.0f,
+        .minOut = -0.4f,
+        .maxOut =  0.4f,
     },
 };
 
 static as5600_cfg_t as5600Cfgs[MAX_MOTORS] = {
     [MOTOR_1] = {
-        .devCfg.dev_addr_length    = I2C_ADDR_BIT_LEN_7,
-        .devCfg.device_address     = AS5600_ADDR,
-        .devCfg.scl_speed_hz       = 400000,
-        .readTimeout  = I2C_READ_TIMEOUT / portTICK_PERIOD_MS,
-        .writeData[0] = ANGLE_MSB,
-        .writeData[1] = ANGLE_MSB >> 8,
+        .devCfg.dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .devCfg.device_address  = AS5600_ADDR,
+        .devCfg.scl_speed_hz    = 100000,
+        .readTimeout            = I2C_READ_TIMEOUT / portTICK_PERIOD_MS,
+        .writeData[0]           = ANGLE_MSB,
+        .writeData[1]           = ANGLE_MSB >> 8,
     },
     [MOTOR_2] = {
-        .devCfg.dev_addr_length    = I2C_ADDR_BIT_LEN_7,
-        .devCfg.device_address     = AS5600_ADDR,
-        .devCfg.scl_speed_hz       = 400000,
-        .readTimeout  = I2C_READ_TIMEOUT / portTICK_PERIOD_MS,
-        .writeData[0] = ANGLE_MSB,
-        .writeData[1] = ANGLE_MSB >> 8,
+        .devCfg.dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .devCfg.device_address  = AS5600_ADDR,
+        .devCfg.scl_speed_hz    = 100000,
+        .readTimeout            = I2C_READ_TIMEOUT / portTICK_PERIOD_MS,
+        .writeData[0]           = ANGLE_MSB,
+        .writeData[1]           = ANGLE_MSB >> 8,
     },
 };
 
@@ -213,7 +215,7 @@ resp_t initI2CPorts(void)
 
         esp_err_t err = i2c_new_master_bus(&i2cMasterCfg[i].busCfg, &i2cMasterCfg[i].bus);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "i2c_new_master_bus failed: %s", esp_err_to_name(err));
+            ESP_LOGE(TAG, "i2c_new_master_bus failed %d: %s", i, esp_err_to_name(err));
             return RESP_ERR;
         }
     }
@@ -241,7 +243,7 @@ static resp_t initMotor_FbDrivers(motorCtrlCtx_t *motorCtrl)
         .devCfg = {
             .dev_addr_length  = I2C_ADDR_BIT_LEN_7,
             .device_address   = 0x40,
-            .scl_speed_hz     = 400000,
+            .scl_speed_hz     = 100000,
         },
     };
 
@@ -298,6 +300,7 @@ static resp_t initMotor_FbDrivers(motorCtrlCtx_t *motorCtrl)
 
 void app_main(void)
 {
+    vTaskDelay(pdMS_TO_TICKS(1000));
     resp_t sts = RESP_OK;
     esp_log_level_set(TAG, logLvl); // Setting debug
     sts = initFlash();

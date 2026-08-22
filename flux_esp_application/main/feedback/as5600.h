@@ -19,8 +19,6 @@
 #define SCL_1_PIN     19
 #define SDA_2_PIN     26
 #define SCL_2_PIN     25
-#define SDA_PULLUP_EN GPIO_PULLUP_ENABLE
-#define SCL_PULLUP_EN GPIO_PULLUP_ENABLE
 #define I2C_CLK_SPD 400000
 #define I2C_READ_TIMEOUT 1000
 // #endif //if 1
