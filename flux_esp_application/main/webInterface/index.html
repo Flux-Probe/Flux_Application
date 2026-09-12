@@ -123,6 +123,13 @@
                                 data-enabled="0"
                                 onclick="toggleEnable('${prefix}')">OFF</button>
                     </div>
+                    <div class="ctrl-item">
+                        <label>Verbose Logs</label>
+                        <button class="toggle-btn disabled"
+                                id="btn_verb_${prefix}"
+                                data-enabled="0"
+                                onclick="setVerbBtn('${prefix}')">OFF</button>
+                    </div>
 
                     <div class="ctrl-item">
                         <label>Mode</label>
@@ -237,6 +244,16 @@
         const btn = document.getElementById(`btn_en_${prefix}`);
         if (!btn) return;
         btn.dataset.enabled = enabled ? '1' : '0';
+        btn.textContent     = enabled ? 'ON' : 'OFF';
+        btn.className       = `toggle-btn ${enabled ? 'enabled' : 'disabled'}`;
+    }
+
+    function setVerbBtn(prefix) {
+        const btn  = document.getElementById(`btn_verb_${prefix}`);
+        const next = btn.dataset.enabled === '1' ? 0 : 1;
+        sendSet(`${prefix}.verbLogs`, next);
+        const enabled = (next === 1);
+        btn.dataset.enabled = enabled ? '1'  : '0';
         btn.textContent     = enabled ? 'ON' : 'OFF';
         btn.className       = `toggle-btn ${enabled ? 'enabled' : 'disabled'}`;
     }

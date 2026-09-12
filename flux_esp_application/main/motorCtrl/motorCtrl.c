@@ -132,6 +132,11 @@ resp_t setLoopGains(uint8_t idx, pidLoop_t gains)
     return RESP_OK;
 }
 
+void setVerboseLogs(bool flag)
+{
+    mtrCtx->verbLogs = flag;
+}
+
 static float pidUpdate(pidLoop_t *pid, float target, float curr, float dt)
 {
     pid->error = target - curr;
@@ -175,13 +180,20 @@ void motorControlTask(void *arg)
     LOG_I("Params %.2f | %.2f | %.2f | %.2f", ctx->mtrs[0].limits.lower, ctx->mtrs[0].limits.upper,
                                               ctx->mtrs[1].limits.lower, ctx->mtrs[1].limits.upper);
 
-    while(1){
-        xSemaphoreTake(ctrlTaskSem, pdMS_TO_TICKS(FREQ_125HZ));
+    uint32_t cntr = 0;
 
+    while(1){
+        cntr++;
+        uint32_t preSemTime = esp_timer_get_time();
+        xSemaphoreTake(ctrlTaskSem, pdMS_TO_TICKS(FREQ_125HZ));
         /* Held for the whole pass below so setLoopGains() can't land a
          * partial update in the middle of iterating the motors. */
-        xSemaphoreTake(gainsMutex, portMAX_DELAY);
+        uint32_t preLoopTimer = esp_timer_get_time();
+        ctx->metrics.semWaitTick = preLoopTimer - preSemTime;
 
+        xSemaphoreTake(gainsMutex, portMAX_DELAY);
+        preLoopTimer = esp_timer_get_time();
+        ctx->metrics.gainsSemTick = preLoopTimer - preSemTime;
         for (int idx = 0; idx < ctx->numMotors; idx++) {
             /* RFI: Add a field in motorCtx to decimate the speed at which each
                motor is updated. */
@@ -238,6 +250,11 @@ void motorControlTask(void *arg)
         }
 
         xSemaphoreGive(gainsMutex);
+        ctx->metrics.overallLoopTick = esp_timer_get_time() - preLoopTimer;
+
+        if (ctx->verbLogs && (cntr % 4 == 0)) {
+            LOG_I("%d | %d | %d", ctx->metrics.overallLoopTick, ctx->metrics.semWaitTick, ctx->metrics.gainsSemTick);
+        }
     }
 }
 

@@ -78,10 +78,18 @@ typedef struct motorCtx_s {
     pidLoop_t       pid;
 } motorCtx_t;
 
+typedef struct {
+    uint32_t overallLoopTick;
+    uint32_t gainsSemTick;
+    uint32_t semWaitTick;
+} metricTiming_t;
+
 typedef struct motorCtrlCtx_s{
-    uint8_t     numMotors;
-    motorCtx_t  mtrs[MAX_MOTORS];
-    uint16_t    debugFlag;
+    uint8_t         numMotors;
+    motorCtx_t      mtrs[MAX_MOTORS];
+    uint16_t        debugFlag;
+    metricTiming_t  metrics;
+    bool            verbLogs;
     /* Add PID types here for each motor. Should it be in motorCtx?*/
 } motorCtrlCtx_t;
 
@@ -94,6 +102,7 @@ void setTargetPwm(uint8_t idx, float setDrive);
 void setTargetPos(uint8_t idx, float setDrive);
 // Update PID loop gains for a motor; blocks until motorControlTask is between cycles
 resp_t setLoopGains(uint8_t idx, pidLoop_t gains);
+void   setVerboseLogs(bool flag);
 
 resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx);
 
