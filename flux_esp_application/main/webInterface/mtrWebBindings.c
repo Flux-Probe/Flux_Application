@@ -120,6 +120,11 @@ static void setGains(const char *val, void *ctx)
     setLoopGains(*(uint8_t *)ctx, gains);
 }
 
+static void setVerbLogs(const char *val, void *ctx)
+{
+    setVerboseLogs(strtol(val, NULL, 10) != 0);
+}
+
 /**
  * Registration
  */
@@ -191,5 +196,8 @@ void motorCtrlRegisterWebBindings(webApp_t *web, motorCtrlCtx_t *mtrCtrl)
 
         snprintf(key, sizeof(key), "mtr%d.gains", i);
         webAppRegisterControl(web, key, setGains, &m->idx);
+
+        snprintf(key, sizeof(key), "mtr%d.verbLogs", i);
+        webAppRegisterControl(web, key, setVerbLogs, &m->idx);
     }
 }
