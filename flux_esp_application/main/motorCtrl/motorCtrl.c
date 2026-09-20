@@ -121,11 +121,12 @@ resp_t setLoopGains(uint8_t idx, pidLoop_t gains)
         return RESP_ERR;
     }
 
-    mtrCtx->mtrs[idx].pid.kp = gains.kp;
-    mtrCtx->mtrs[idx].pid.ki = gains.ki;
-    mtrCtx->mtrs[idx].pid.kd = gains.kd;
+    mtrCtx->mtrs[idx].pid.kp     = gains.kp;
+    mtrCtx->mtrs[idx].pid.ki     = gains.ki;
+    mtrCtx->mtrs[idx].pid.kd     = gains.kd;
     mtrCtx->mtrs[idx].pid.minOut = gains.minOut;
     mtrCtx->mtrs[idx].pid.maxOut = gains.maxOut;
+    mtrCtx->mtrs[idx].pid.db     = gains.db;
     CLEAR_ERRORS(idx);
 
     xSemaphoreGive(gainsMutex);
@@ -143,6 +144,11 @@ static float pidUpdate(pidLoop_t *pid, float target, float curr, float dt)
     pid->integral += pid->error * (dt / 1000);
 
     float output = (pid->kp * pid->error) + (pid->ki * pid->integral);
+
+    if (abs(pid->error) < pid->db) {
+        output        = 0;
+        pid->integral = 0;
+    }
     /* Clamp the PWM output depending on the motor */
     LIM_VAL(output, pid->maxOut, pid->minOut);
     return output;

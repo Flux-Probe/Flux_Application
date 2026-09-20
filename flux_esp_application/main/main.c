@@ -109,10 +109,11 @@ static adcIF_t    *adcIF[MAX_ADS];
 static pidLoop_t dfltPids[MAX_MOTORS] = {
     [MOTOR_1] = {
         .kp     =  0.01f,
-        .ki     =  0.0f,
+        .ki     =  0.01f,
         .kd     =  0.0f,
         .minOut = -0.4f,
         .maxOut =  0.4f,
+        .db     =  1.0f,
     },
     [MOTOR_2] = {
         .kp     =  0.01f,
@@ -120,6 +121,7 @@ static pidLoop_t dfltPids[MAX_MOTORS] = {
         .kd     =  0.0f,
         .minOut = -0.4f,
         .maxOut =  0.4f,
+        .db     =  2.0f,
     },
 };
 
@@ -313,6 +315,7 @@ static resp_t initMotor_FbDrivers(motorCtrlCtx_t *motorCtrl)
         motorCtrl->mtrs[i].pid.kp       = dfltPids[i].kp;
         motorCtrl->mtrs[i].pid.ki       = dfltPids[i].ki;
         motorCtrl->mtrs[i].pid.kd       = dfltPids[i].kd;
+        motorCtrl->mtrs[i].pid.db       = dfltPids[i].db;
         motorCtrl->mtrs[i].pid.minOut   = dfltPids[i].minOut;
         motorCtrl->mtrs[i].pid.maxOut   = dfltPids[i].maxOut;
     }

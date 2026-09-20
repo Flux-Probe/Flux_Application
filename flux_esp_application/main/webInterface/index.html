@@ -152,7 +152,7 @@
                 <div class="ctrl-item full">
                     <label>Pos Target</label>
                     <div class="speed-row">
-                        <input type="number" id="posSetpoint_${prefix}" value="0" step="0.1" />
+                        <input type="number" id="posSetpoint_${prefix}" value="0" step="1" />
                         <button onclick="sendPos('${prefix}')">Set Position Target</button>
                     </div>
                 </div>
@@ -163,6 +163,7 @@
                         <input type="number" id="kp_${prefix}" placeholder="Kp" step="0.01" />
                         <input type="number" id="ki_${prefix}" placeholder="Ki" step="0.01" />
                         <input type="number" id="kd_${prefix}" placeholder="Kd" step="0.01" />
+                        <input type="number" id="db_${prefix}" placeholder="db" step="1" />
                     </div>
                     <div class="speed-row">
                         <input type="number" id="minOut_${prefix}" placeholder="Min Out" step="0.01" />
@@ -229,7 +230,7 @@
             const sub    = key.slice(dot + 1);
 
             if (sub === 'kp' || sub === 'ki' || sub === 'kd'
-             || sub === 'minOut' || sub === 'maxOut') {
+             || sub === 'minOut' || sub === 'maxOut' || sub === 'db') {
                 const el = document.getElementById(`${sub}_${prefix}`);
                 if (el && document.activeElement !== el)
                     el.value = String(data[key]);
@@ -281,9 +282,10 @@
         const kp   = document.getElementById(`kp_${prefix}`).value || 0;
         const ki   = document.getElementById(`ki_${prefix}`).value || 0;
         const kd   = document.getElementById(`kd_${prefix}`).value || 0;
+        const db   = document.getElementById(`db_${prefix}`).value || 0;
         const minO = document.getElementById(`minOut_${prefix}`).value || 0;
         const maxO = document.getElementById(`maxOut_${prefix}`).value || 0;
-        sendSet(`${prefix}.gains`, `${kp},${ki},${kd},${minO},${maxO}`);
+        sendSet(`${prefix}.gains`, `${kp},${ki},${kd},${minO},${maxO},${db}`);
     }
 
     function sendRaw() {

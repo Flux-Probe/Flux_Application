@@ -49,6 +49,8 @@ typedef struct {
     float error;
     float prevError;
 
+    float db;
+
     float minOut;
     float maxOut;
 } pidLoop_t;
