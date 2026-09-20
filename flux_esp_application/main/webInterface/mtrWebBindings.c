@@ -65,6 +65,11 @@ static void getMaxOut(char *o, size_t n, void *ctx)
     snprintf(o, n, "%.4f", ((motorCtx_t *)ctx)->pid.maxOut);
 }
 
+static void getPosDb(char *o, size_t n, void *ctx)
+{
+    snprintf(o, n, "%.4f", ((motorCtx_t *)ctx)->pid.db);
+}
+
 static void getPidError(char *o, size_t n, void *ctx)
 {
     snprintf(o, n, "%.4f", ((motorCtx_t *)ctx)->pid.error);
@@ -116,6 +121,7 @@ static void setGains(const char *val, void *ctx)
     if (*end == ',') gains.kd     = strtof(end + 1, &end);
     if (*end == ',') gains.minOut = strtof(end + 1, &end);
     if (*end == ',') gains.maxOut = strtof(end + 1, &end);
+    if (*end == ',') gains.db     = strtof(end + 1, &end);
 
     setLoopGains(*(uint8_t *)ctx, gains);
 }
@@ -171,6 +177,9 @@ void motorCtrlRegisterWebBindings(webApp_t *web, motorCtrlCtx_t *mtrCtrl)
 
         snprintf(key, sizeof(key), "mtr%d.maxOut", i);
         webAppRegisterMonitor(web, key, getMaxOut, m);
+
+        snprintf(key, sizeof(key), "mtr%d.db", i);
+        webAppRegisterMonitor(web, key, getPosDb, m);
 
         snprintf(key, sizeof(key), "mtr%d.error", i);
         webAppRegisterMonitor(web, key, getPidError, m);
