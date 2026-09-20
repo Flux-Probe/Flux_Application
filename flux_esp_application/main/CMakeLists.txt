@@ -12,6 +12,7 @@ set(srcs "main.c"
          "webInterface/wifiSetup.c"
          "webInterface/webApp.c"
          "webInterface/mtrWebBindings.c"
+         "adc/ads1115.c"
          )
 
 set(dirs "."
@@ -20,6 +21,7 @@ set(dirs "."
         "motorDrivers"
         "feedback"
         "driver"
+        "adc"
         "webInterface"
         "../../"        #For Configuration files
         )

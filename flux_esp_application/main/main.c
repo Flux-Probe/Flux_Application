@@ -15,11 +15,12 @@
 #include "mainDefs.h"
 #include "nvs_flash.h"
 #include "motorDriver_PCA9685.h"
+#include "ads1115.h"
 #include "dummyFb.h"
 
 #define TAG "MAIN"
 #define DBG dbgFlag
-static uint16_t dbgFlag = DBG_INFO | DBG_ERROR;
+static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
 
 static int logLvl = ESP_LOG_DEBUG;
 
@@ -28,6 +29,8 @@ static int logLvl = ESP_LOG_DEBUG;
 #define MAX31865_MOSI_PIN       23
 #define MAX31865_CS_1_PIN       26
 #define MAX31865_DRDY_PIN       25
+
+#define MAX_ADS 2
 
 static max31865_cfg_t maxCfg = {
     .filter         = MAX31865_FILTER_50HZ,
@@ -99,8 +102,9 @@ static espIf_t espIF;
 static pca9685Dev_t *pcaDev;
 
 /* Copy of interfaces used */
-static motorIF_t *mtrIF[MAX_MOTORS];
+static motorIF_t  *mtrIF[MAX_MOTORS];
 static feedback_t *fbIF[MAX_MOTORS];
+static adcIF_t    *adcIF[MAX_ADS];
 
 static pidLoop_t dfltPids[MAX_MOTORS] = {
     [MOTOR_1] = {
@@ -119,22 +123,38 @@ static pidLoop_t dfltPids[MAX_MOTORS] = {
     },
 };
 
+ads1115Cfg_t ads1115Cfgs[MAX_ADS] = {
+    [0] = {
+        .devCfg = {
+            .dev_addr_length    = I2C_ADDR_BIT_LEN_7,
+            .device_address     = ADS1115_ADDR_GND,
+            .scl_speed_hz       = 100000,
+        },
+        .dbgFlag        = DBG_INFO | DBG_WARNING | DBG_ERROR,
+        .dr             = ADS1115_250SPS,
+        .vRef           = 3.3,
+        .rRef           = 4700,
+        .pga            = ADS1115_PGA_4096,
+        .alertPin       = 4,
+    },
+};
+
 static as5600_cfg_t as5600Cfgs[MAX_MOTORS] = {
     [MOTOR_1] = {
-        .devCfg.dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .devCfg.device_address  = AS5600_ADDR,
-        .devCfg.scl_speed_hz    = 100000,
-        .readTimeout            = I2C_READ_TIMEOUT / portTICK_PERIOD_MS,
-        .writeData[0]           = ANGLE_MSB,
-        .writeData[1]           = ANGLE_MSB >> 8,
+        .useAdc                 = true,
+        .channel                = ADS1115_MUX_A0_A1,
+        .resetPin               = 4,
     },
     [MOTOR_2] = {
-        .devCfg.dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .devCfg.device_address  = AS5600_ADDR,
-        .devCfg.scl_speed_hz    = 100000,
+        .devCfg = {
+            .dev_addr_length    = I2C_ADDR_BIT_LEN_7,
+            .device_address     = AS5600_ADDR,
+            .scl_speed_hz       = 100000,
+        },
         .readTimeout            = I2C_READ_TIMEOUT / portTICK_PERIOD_MS,
         .writeData[0]           = ANGLE_MSB,
         .writeData[1]           = ANGLE_MSB >> 8,
+        .useAdc                 = false,
     },
 };
 
@@ -267,13 +287,18 @@ static resp_t initMotor_FbDrivers(motorCtrlCtx_t *motorCtrl)
         },
     };
 
+    /* Init the ADS1115 instance. Put within the ADC_IF */
+    ads1115Cfgs[0].i2cBus   = i2cMasterCfg[1].bus;
+    adcIF[0]                = ads1115Init(ads1115Cfgs[0]);
+    CHECK_PTR_RET_ERR(adcIF[0], "ADS1115 did not initialize correctly");
+
     for (int i = 0; i < MAX_MOTORS; i++) {
         mtrIF[i] = createMtrDriverIF_PCA9685(mtrDrvPCA[i]);
         CHECK_PTR_RET_ERR(mtrIF[i], "Error creating motorIF %d for PCA", i);
 
         if (i == MOTOR_1) {
-            as5600Cfgs[i].i2cBus = i2cMasterCfg[1].bus;
-            fbIF[i] = as5600Init(as5600Cfgs[i]);
+            as5600Cfgs[i].adc   = adcIF[0];
+            fbIF[i]             = as5600Init(as5600Cfgs[i]);
         }
         else {
             fbIF[i] = dummyFbInit(10 + 10 * i);
