@@ -170,7 +170,11 @@
                     </div>
                     <button onclick="sendGains('${prefix}')">Set PID Gains</button>
                 </div>
-
+                <div class="ctrl-item full">
+                    <label>Reset Motor Angle</label>
+                    <button id="btn_rstAngle_${prefix}"
+                    onclick="setResetAngleBtn('${prefix}')">Start Reset Angle</button>
+                </div>
             </div>`;
         return card;
     }
@@ -256,6 +260,12 @@
         btn.dataset.enabled = enabled ? '1'  : '0';
         btn.textContent     = enabled ? 'ON' : 'OFF';
         btn.className       = `toggle-btn ${enabled ? 'enabled' : 'disabled'}`;
+    }
+
+    function setResetAngleBtn(prefix) {
+        const btn  = document.getElementById(`btn_rstAngle_${prefix}`);
+        const next = btn.dataset.enabled === '1' ? 0 : 1;
+        sendSet(`${prefix}.resetAngle`, next);
     }
 
     function toggleEnable(prefix) {

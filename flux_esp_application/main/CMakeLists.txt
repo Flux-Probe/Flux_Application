@@ -29,7 +29,7 @@ set(dirs "."
 set(requires driver esp_timer esp_wifi esp_driver_mcpwm
              esp_https_server)
 
-set(privReq bt nvs_flash mbedtls json)
+set(privReq bt nvs_flash mbedtls json esp_driver_gpio)
 
 set(embedFiles "webInterface/index.html"
                "webInterface/style.css")

@@ -179,9 +179,25 @@ void testTask(void *arg)
 {
     int32_t cntr = 0;
 
+    setMotorEnable(0, true);
+    setTargetPwm(0, 0.0f);
+    setDriveMode(0, MODE_OPEN);
     while(1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
-        cntr ++;
+        // float data1;
+        // float data2;
+
+        // fbIF[0]->readData(fbIF[0], &data1);
+        // fbIF[1]->readData(fbIF[1], &data2);
+        // float deltaVal = data1 - data2;
+
+        // LOG_W("Feedback: %.5f | %.5f | %.5f", data1, data2, deltaVal);
+        // vTaskDelay(pdMS_TO_TICKS(500));
+
+        // setTargetPwm(0, 0.2);
+        // vTaskDelay(pdMS_TO_TICKS(500));
+        // setTargetPwm(0, 0.0);
+
 
         // Dummy task to change the values of each characteristic to debug on the app
 #if 0

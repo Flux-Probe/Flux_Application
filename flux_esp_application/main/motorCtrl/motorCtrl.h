@@ -103,6 +103,7 @@ void setTargetPos(uint8_t idx, float setDrive);
 // Update PID loop gains for a motor; blocks until motorControlTask is between cycles
 resp_t setLoopGains(uint8_t idx, pidLoop_t gains);
 void   setVerboseLogs(bool flag);
+void   resetMotorAngle(void);
 
 resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrlCtx);
 

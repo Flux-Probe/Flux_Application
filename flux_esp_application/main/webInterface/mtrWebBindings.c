@@ -125,6 +125,11 @@ static void setVerbLogs(const char *val, void *ctx)
     setVerboseLogs(strtol(val, NULL, 10) != 0);
 }
 
+static void setResetAngle(const char *val, void *ctx)
+{
+    resetMotorAngle();
+}
+
 /**
  * Registration
  */
@@ -199,5 +204,8 @@ void motorCtrlRegisterWebBindings(webApp_t *web, motorCtrlCtx_t *mtrCtrl)
 
         snprintf(key, sizeof(key), "mtr%d.verbLogs", i);
         webAppRegisterControl(web, key, setVerbLogs, &m->idx);
+
+        snprintf(key, sizeof(key), "mtr%d.resetAngle", i);
+        webAppRegisterControl(web, key, setResetAngle, &m->idx);
     }
 }

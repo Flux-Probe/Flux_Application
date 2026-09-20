@@ -16,6 +16,7 @@ static uint16_t dbgFlag = DBG_INFO | DBG_WARNING | DBG_ERROR;
 
 motorCtrlCtx_t *mtrCtx;
 SemaphoreHandle_t ctrlTaskSem;
+SemaphoreHandle_t resetAngleSem;
 /* Held by motorControlTask for the duration of each full pass over
  * ctx->mtrs[]. setLoopGains() takes it before writing, so a gains update
  * blocks until the task is between cycles instead of applying mid-cycle.
@@ -109,6 +110,11 @@ void setTargetPos(uint8_t idx, float targetPos)
     motor->posSetpoint = targetPos;
 }
 
+void resetMotorAngle(void)
+{
+    xSemaphoreGive(resetAngleSem);
+}
+
 resp_t setLoopGains(uint8_t idx, pidLoop_t gains)
 {
     CHECK_MTR_IDX_ERR(idx);
@@ -170,6 +176,42 @@ static void mtrFailSafe(motorCtx_t *mtr, const char *reason)
     mtr->driveCmd = 0.0f;
 }
 
+void resetAngleTask(void *arg)
+{
+    motorCtrlCtx_t *ctx = (motorCtrlCtx_t *) arg;
+    while (1) {
+        xSemaphoreTake(resetAngleSem, portMAX_DELAY);
+
+        motorCtx_t *mtr = &ctx->mtrs[0];
+        setTargetPwm(0, 0.0f);
+        setDriveMode(0, MODE_OPEN);
+        vTaskDelay(pdMS_TO_TICKS(200));
+        mtr->fb->resetData(mtr->fb, 0);
+        LOG_W("Reset Pin #1");
+        vTaskDelay(pdMS_TO_TICKS(200));
+        float currPos = mtr->position;
+
+        setTargetPwm(0, -0.2);
+
+        LOG_W("Starting Drive");
+        while (abs(mtr->position - currPos) < 25) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            LOG_W("Still driving %.2f | %.2f", mtr->position, currPos);
+        }
+        setTargetPwm(0, 0.0);
+
+
+        LOG_W("Done driving");
+
+        mtr->fb->resetData(mtr->fb, 0);
+        vTaskDelay(pdMS_TO_TICKS(200));
+
+        LOG_W("Reset Pin #2");
+
+    }
+}
+
+
 // ----------- Control Task -----------
 void motorControlTask(void *arg)
 {
@@ -204,7 +246,7 @@ void motorControlTask(void *arg)
             resp_t sts = RESP_OK;
             sts = mtr->fb->readData(mtr->fb, &mtr->position);
 
-            if (sts != RESP_OK){
+            if (sts != RESP_OK) {
                 mtr->fbFailCount++;
                 LOG_W("ERR reading data from fb (%u/%u)", mtr->fbFailCount, MAX_SUCCESSIVE_IO_FAILS);
                 if (mtr->fbFailCount >= MAX_SUCCESSIVE_IO_FAILS) {
@@ -279,9 +321,10 @@ resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrl)
 
     mtrCtx = mtrCtrl;
 
-    ctrlTaskSem = xSemaphoreCreateBinary();
+    ctrlTaskSem   = xSemaphoreCreateBinary();
+    resetAngleSem = xSemaphoreCreateBinary();
 
-    if (ctrlTaskSem == NULL) {
+    if (ctrlTaskSem == NULL || resetAngleSem == NULL) {
         LOG_E("Error creating motorCtrl semaphore");
         return RESP_ERR;
     }
@@ -296,5 +339,6 @@ resp_t motorCtrlInit(motorCtrlCtx_t *mtrCtrl)
     // Create task for control.
     LOG_I("Creating motor ctrl task");
     xTaskCreate(motorControlTask, "motor_ctrl", 4096, mtrCtx, 10, NULL);
+    xTaskCreate(resetAngleTask, "resetAngleTask", 4096, mtrCtx, 10, NULL);
     return RESP_OK;
 }

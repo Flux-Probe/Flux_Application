@@ -7,6 +7,8 @@
 */
 #include "as5600.h"
 #include <freertos/FreeRTOS.h>
+#include "driver/gpio.h"
+#include <freertos/task.h>
 
 // Needed for Logging module name
 #define TAG "AS5600"
@@ -140,10 +142,24 @@ static resp_t readAS5600Deg(feedback_t *fb, float *readVal)
 
 static resp_t resetAS5600Angle(feedback_t *fb, float resetVal)
 {
+    CHECK_PTR_RET_ERR(fb);
+    as5600PrivCfg_t *cfg = (as5600PrivCfg_t *)fb->privCtx;
     resp_t sts = RESP_OK;
-    /* TODO: Use this function to set a "Starting point" for the angle.
-            Probably a field in the cfg struct that will be subtracted in the
-            readDeg function*/
+    gpio_config_t tempResetPin = cfg->resetGpio;
+    tempResetPin.mode          = GPIO_MODE_OUTPUT;
+    tempResetPin.pull_down_en  = 0;
+    tempResetPin.pull_up_en    = 0;
+
+    if (gpio_config(&tempResetPin) != ESP_OK) {
+        LOG_E("Error setting resetGpio to output");
+    }
+
+    /* Set GPIO to GND */
+    gpio_set_level(cfg->resetPin, 0);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    if (gpio_config(&cfg->resetGpio) != ESP_OK) {
+        LOG_E("Error setting resetGpio back to Input");
+    }
 
     return sts;
 }
@@ -186,10 +202,19 @@ feedback_t *as5600Init(as5600_cfg_t cfg)
         as5600Fb->readRawData = readAS5600RawI2c;
     }
     else {
-        privCtx->adcIF        = cfg.adc;
-        privCtx->channel      = cfg.channel;
+        privCtx->adcIF                 = cfg.adc;
+        privCtx->channel               = cfg.channel;
 
-        as5600Fb->readRawData = readAS5600RawAdc;
+        /* Set the reset pin to be an input by default */
+        privCtx->resetPin               = cfg.resetPin;
+        privCtx->resetGpio.pin_bit_mask = 1ULL<<cfg.resetPin;
+        privCtx->resetGpio.mode         = GPIO_MODE_INPUT;
+        privCtx->resetGpio.pull_up_en   = 1;
+        if (gpio_config(&privCtx->resetGpio) != ESP_OK) {
+            LOG_E("Error configuring Reset pin by default");
+        }
+
+        as5600Fb->readRawData          = readAS5600RawAdc;
     }
 
     as5600Fb->privCtx   = (void *)privCtx;
